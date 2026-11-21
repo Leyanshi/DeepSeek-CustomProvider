@@ -2,9 +2,27 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo). Configure your own **API Key, Base URL and model**. The app uses the system WebView and a native HTTPS bridge; its APK is about **1.92 MB**. No Android Studio, Gradle or emulator is required.
+A lightweight Android chat app. Configure your own **API Key, Base URL and model**. The app uses the system WebView and a native HTTPS bridge; its APK is about **2 MB**. No Android Studio, Gradle or emulator is required.
 
 <img src="resources/deepseek-app-icon.svg" width="88" height="88" alt="DeepSeek app icon" />
+
+## ❤️ Sponsors
+
+> [Wanna be there?](mailto:zynkapi@qq.com)
+<details open>
+
+<table>
+<tr>
+<td width="180"><a href="https://zynk.top/sign-up?aff=DSCP"><img src="https://topup.leyanshi.me/logo.jpg" alt="Zynk API" width="150"></a></td>
+<td>Thanks to Zynk API for sponsoring this project! <a href="https://zynk.top/sign-up?aff=DSCP">Zynk API</a> is an AI API gateway platform focused on speed and value, providing API access to leading models such as Claude, OpenAI, Gemini, and Kimi. <a href="https://zynk.top/sign-up?aff=DSCP">Click here</a> to enjoy fast, reliable, and affordable service at prices far below official API rates.</td>
+</tr>
+
+
+
+
+</table>
+
+</details>
 
 ## Download and use
 

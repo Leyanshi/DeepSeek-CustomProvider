@@ -6,24 +6,54 @@
     <meta name="theme-color" content="#ffffff" />
     <title>DeepSeek</title>
     <script defer src="./static/startup.js"></script>
+    <style>
+      #startup-state {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: 24px;
+        background: #fff;
+        color: #222;
+        font: 14px/1.6 sans-serif;
+        text-align: center;
+      }
+      #startup-logo svg {
+        display: block;
+        width: 72px;
+        height: 72px;
+      }
+      #startup-title {
+        margin: 16px 0 0;
+        color: #8a8a8a;
+        font-size: 14px;
+        font-weight: 400;
+      }
+      #startup-detail {
+        max-width: 100%;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        text-align: left;
+      }
+      #startup-detail:empty,
+      #startup-help:empty {
+        display: none;
+      }
+    </style>
   </head>
   <body>
     <div id="root">
-      <div
-        id="startup-state"
-        role="status"
-        style="
-          padding: 28px;
-          color: #222;
-          background: #fff;
-          font: 16px/1.6 sans-serif;
-          min-height: 100vh;
-          box-sizing: border-box;
-        "
-      >
-        <h2 id="startup-title">正在启动 DeepSeek…</h2>
-        <pre id="startup-detail" style="white-space: pre-wrap; overflow-wrap: anywhere"></pre>
-        <p id="startup-help">界面正在本机加载。</p>
+      <div id="startup-state" role="status">
+        <div id="startup-logo"><%= startupLogo %></div>
+        <p id="startup-title">加载中</p>
+        <pre id="startup-detail"></pre>
+        <p id="startup-help"></p>
         <button id="startup-retry" type="button" hidden style="padding: 12px 20px">重新加载</button>
       </div>
     </div>

@@ -4,21 +4,26 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.view.View;
+import android.view.Gravity;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.ConsoleMessage;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -26,6 +31,11 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Button;
 
 import org.json.JSONObject;
 
@@ -42,6 +52,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -60,6 +71,17 @@ public final class MainActivity extends Activity {
     private final ConcurrentHashMap<String, NetworkJob> requests = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, FileJob> files = new ConcurrentHashMap<>();
     private WebView webView;
+    private FrameLayout container;
+    private ScrollView startupPanel;
+    private TextView startupTitle;
+    private TextView startupDetail;
+    private LinearLayout startupActions;
+    private volatile boolean startupReady;
+    private volatile String startupError = "";
+    private final Set<String> startupScripts = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    private final Runnable startupTimeout = () -> {
+        if (!this.destroyed && !startupReady) { showStartupFailure("启动超过 15 秒，页面没有报告启动完成。"); }
+    };
     private ValueCallback<Uri[]> fileChooser;
     private PermissionRequest microphoneRequest;
     private String savingId;
@@ -76,7 +98,7 @@ public final class MainActivity extends Activity {
         }
         webView = new WebView(this);
         webView.setBackgroundColor(Color.WHITE);
-        FrameLayout container = new FrameLayout(this);
+        container = new FrameLayout(this);
         container.addView(webView, new FrameLayout.LayoutParams(-1, -1));
         setContentView(container);
         if (android.os.Build.VERSION.SDK_INT >= 30) { getWindow().setDecorFitsSystemWindows(false); }
@@ -114,7 +136,88 @@ public final class MainActivity extends Activity {
         webView.setDownloadListener((url, agent, disposition, mime, length) -> {
             if (url.startsWith("https://") || url.startsWith("http://")) { openExternal(url); }
         });
+        createStartupPanel();
+        beginStartup();
         webView.loadUrl(ORIGIN + "/index.html");
+    }
+
+    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private void createStartupPanel() {
+        startupPanel = new ScrollView(this);
+        startupPanel.setBackgroundColor(Color.WHITE);
+        startupPanel.setFillViewport(true);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER);
+        content.setPadding(dp(24), dp(24), dp(24), dp(24));
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ic_launcher);
+        logo.setContentDescription("DeepSeek");
+        content.addView(logo, new LinearLayout.LayoutParams(dp(96), dp(96)));
+        startupTitle = new TextView(this);
+        startupTitle.setTextSize(14);
+        startupTitle.setTextColor(Color.rgb(138, 138, 138));
+        startupTitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleLayout = new LinearLayout.LayoutParams(-1, -2);
+        titleLayout.topMargin = dp(16);
+        content.addView(startupTitle, titleLayout);
+        startupDetail = new TextView(this);
+        startupDetail.setTextSize(12);
+        startupDetail.setTextColor(Color.DKGRAY);
+        startupDetail.setTextIsSelectable(true);
+        LinearLayout.LayoutParams detailLayout = new LinearLayout.LayoutParams(-1, -2);
+        detailLayout.topMargin = dp(16);
+        content.addView(startupDetail, detailLayout);
+        startupActions = new LinearLayout(this);
+        startupActions.setGravity(Gravity.CENTER);
+        Button retry = new Button(this);
+        retry.setText("重新加载");
+        retry.setOnClickListener(view -> { beginStartup(); webView.reload(); });
+        startupActions.addView(retry);
+        Button copy = new Button(this);
+        copy.setText("复制诊断");
+        copy.setOnClickListener(view -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("DeepSeek 启动诊断", startupDetail.getText()));
+                notice("诊断已复制");
+            }
+        });
+        startupActions.addView(copy);
+        content.addView(startupActions);
+        startupPanel.addView(content, new ScrollView.LayoutParams(-1, -2));
+    }
+
+    private void beginStartup() {
+        startupReady = false;
+        startupError = "";
+        startupScripts.clear();
+        startupTitle.setText("加载中");
+        startupDetail.setVisibility(View.GONE);
+        startupActions.setVisibility(View.GONE);
+        if (startupPanel.getParent() == null) { container.addView(startupPanel, new FrameLayout.LayoutParams(-1, -1)); }
+        ui.removeCallbacks(startupTimeout);
+        ui.postDelayed(startupTimeout, 15000);
+    }
+
+    private void showStartupFailure(String reason) {
+        if (destroyed || startupReady) { return; }
+        ui.removeCallbacks(startupTimeout);
+        android.content.pm.PackageInfo provider = WebView.getCurrentWebViewPackage();
+        String version = "未知";
+        try { version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
+        ArrayList<String> scripts = new ArrayList<>(startupScripts);
+        Collections.sort(scripts);
+        String details = "App：" + version + "\nWebView：" + (provider == null ? "未知" : provider.packageName + " " + provider.versionName)
+            + "\nJavaScript：" + webView.getSettings().getJavaScriptEnabled()
+            + "\n已读取脚本：" + scripts.size() + "\n" + scripts
+            + "\n" + reason + (startupError.isEmpty() ? "" : "\n错误：" + startupError)
+            + "\n\n请重试或复制诊断反馈；不会清除聊天记录。";
+        startupTitle.setText("启动未完成");
+        startupDetail.setText(details);
+        startupDetail.setVisibility(View.VISIBLE);
+        startupActions.setVisibility(View.VISIBLE);
     }
 
     private boolean trusted(Uri uri) {
@@ -157,6 +260,12 @@ public final class MainActivity extends Activity {
     }
 
     private final class LocalClient extends WebViewClient {
+        @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            if (trusted(Uri.parse(url))) { beginStartup(); }
+        }
+        @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            if (request.isForMainFrame()) { showStartupFailure("页面加载失败：" + error.getErrorCode() + " " + error.getDescription()); }
+        }
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
             if (trusted(uri) && ("/".equals(uri.getPath()) || "/index.html".equals(uri.getPath()))) { return false; }
@@ -181,8 +290,13 @@ public final class MainActivity extends Activity {
                 headers.put("X-Content-Type-Options", "nosniff");
                 headers.put("Cache-Control", "no-store");
                 String type = mime(name);
-                return new WebResourceResponse(type, type.startsWith("text/") ? "UTF-8" : null, 200, "OK", headers, getAssets().open(name.substring(1)));
-            } catch (Exception error) { return blocked(404, "Not Found"); }
+                InputStream asset = getAssets().open(name.substring(1));
+                if (!startupReady && name.endsWith(".js")) { startupScripts.add(name.substring(name.lastIndexOf('/') + 1)); }
+                return new WebResourceResponse(type, type.startsWith("text/") ? "UTF-8" : null, 200, "OK", headers, asset);
+            } catch (Exception error) {
+                if (!startupReady) { startupError = "本地资源读取失败：" + name; }
+                return blocked(404, "Not Found");
+            }
         }
         private WebResourceResponse blocked(int code, String message) {
             return new WebResourceResponse("text/plain", "UTF-8", code, message, Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
@@ -200,6 +314,13 @@ public final class MainActivity extends Activity {
     }
 
     private final class ChromeClient extends WebChromeClient {
+        @Override public boolean onConsoleMessage(ConsoleMessage message) {
+            if (!startupReady && message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                String detail = message.message();
+                startupError = detail.substring(0, Math.min(600, detail.length()));
+            }
+            return true;
+        }
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
             if (fileChooser != null) { fileChooser.onReceiveValue(null); }
             fileChooser = callback;
@@ -287,6 +408,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        ui.removeCallbacks(startupTimeout);
         for (NetworkJob job : requests.values()) { job.cancel(); }
         for (FileJob job : files.values()) { job.close(); job.file.delete(); }
         if (fileChooser != null) { fileChooser.onReceiveValue(null); }
@@ -318,6 +440,22 @@ public final class MainActivity extends Activity {
     }
 
     public final class NativeBridge {
+        @JavascriptInterface public void appReady() {
+            ui.post(() -> {
+                if (destroyed) { return; }
+                startupReady = true;
+                ui.removeCallbacks(startupTimeout);
+                container.removeView(startupPanel);
+            });
+        }
+        @JavascriptInterface public void startupFailed(String message) {
+            ui.post(() -> {
+                if (destroyed || startupReady) { return; }
+                String detail = message == null ? "页面启动失败" : message;
+                startupError = detail.substring(0, Math.min(600, detail.length()));
+                showStartupFailure("页面脚本报告启动失败。");
+            });
+        }
         @JavascriptInterface public void request(String payload) {
             String requestId = "";
             try {

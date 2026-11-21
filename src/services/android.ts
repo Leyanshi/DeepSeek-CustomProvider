@@ -2,6 +2,8 @@ import { createId } from '../utils/id.js'
 
 /** The Android shell exposes a small bridge only to its bundled HTTPS document. */
 type AndroidBridge = {
+  appReady?: () => void
+  startupFailed?: (message: string) => void
   request: (payload: string) => void
   cancelRequest: (id: string) => void
   beginFile: (id: string, name: string, type: string) => boolean
@@ -22,6 +24,7 @@ declare global {
 const ORIGIN = 'https://appassets.androidplatform.net'
 const bridge = () => (location.origin === ORIGIN ? window.DeepSeekAndroid : undefined)
 export const isAndroidApp = () => Boolean(bridge())
+export const notifyAndroidReady = () => bridge()?.appReady?.()
 const encode = (bytes: Uint8Array) => {
   let text = ''
   for (let start = 0; start < bytes.length; start += 16384) {

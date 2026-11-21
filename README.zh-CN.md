@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-基于 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 的轻量 Android 聊天客户端，可自定义 **API Key、Base URL 和模型**。复用系统 WebView，通过原生 HTTPS 桥接访问 API，APK 约 **1.91 MB**，无需 Android Studio、Gradle 或模拟器。
+基于 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 的轻量 Android 聊天客户端，可自定义 **API Key、Base URL 和模型**。复用系统 WebView，通过原生 HTTPS 桥接访问 API，APK 约 **1.92 MB**，无需 Android Studio、Gradle 或模拟器。
 
 <img src="resources/deepseek-app-icon.svg" width="88" height="88" alt="DeepSeek 应用图标" />
 
@@ -10,13 +10,17 @@
 
 [下载 Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [安装与构建详细说明](ANDROID.md)
 
-支持 Android 8.0 及以上，推荐较新的系统 WebView，不依赖 Google Play 服务。v0.1.7 已加入旧内核启动 API 和视口高度兼容；启动失败时会显示错误详情和重试按钮。手机上显示的应用名称为 **DeepSeek**。这是社区客户端，并非 DeepSeek 官方应用。
+支持 Android 8.0 及以上，推荐较新的系统 WebView，不依赖 Google Play 服务。v0.1.8 启动画面为居中的 DeepSeek LOGO 和灰色「加载中」；原生计时器在启动未完成时于 15 秒后显示诊断、重试和复制按钮，即使网页脚本没有运行也能提示。保留旧内核启动 API 和视口高度兼容。手机上显示的应用名称为 **DeepSeek**。这是社区客户端，并非 DeepSeek 官方应用。
 
 1. 从 Releases 下载 APK，传到手机安装。
 2. 打开「设置 → 数据管理」，填写 API Key 和 HTTPS Base URL，点击「确定」保存。
 3. 在「聊天模型」中获取模型列表并选择，或手动填写自定义模型 ID，再点击「确定」。
 
 新消息、编辑提问和重新生成使用当前所选模型，继续生成沿用原回答的模型。连接配置和模型会保留到下次启动。正式发布版本使用同一签名，可以覆盖安装旧版并保留本机数据。
+
+若仍停在加载画面，请等待 15 秒并点击「复制诊断」，反馈应用版本、WebView 版本和错误详情。重试保留本机聊天记录。用户手机上持续加载的原因尚未确认。
+
+<img src="docs/images/android-loading.png" width="260" alt="居中 DeepSeek LOGO 和灰色加载中" />
 
 ## 运行
 
@@ -83,7 +87,7 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm test:android`  | 手机尺寸界面与桥接测试       |
 | `pnpm format`        | oxfmt 格式化                 |
 
-CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试及网页构建。移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸和 Android 桥接，不安装模拟器，也不需要真实 API Key。打包时自动检查 APK 签名、对齐和清单。尚未进行 Android 真机测试。
+CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试及网页构建。12 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸和 Android 桥接，覆盖加载页、启动完成通知和早期初始化错误，不安装模拟器，也不需要真实 API Key。打包时自动检查 APK 签名、对齐和清单。尚未进行 Android 真机测试，包括原生启动计时和诊断。
 
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 

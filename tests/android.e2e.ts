@@ -22,6 +22,8 @@ type Harness = {
   saved: { name: string; type: string; chunks: string[] }[]
   links: string[]
   dark: boolean
+  readyCalls: number
+  startupErrors: string[]
   modelResponse: unknown
   modelStatus: number
   stopReason: 'end_turn' | 'max_tokens'
@@ -61,6 +63,8 @@ test.beforeEach(async ({ page }) => {
       saved: [],
       links: [],
       dark: false,
+      readyCalls: 0,
+      startupErrors: [],
       modelResponse: {
         data: [
           { id: 'deepseek-flash' },
@@ -78,6 +82,12 @@ test.beforeEach(async ({ page }) => {
     const data = (id: string, text: string) =>
       emit({ id, type: 'data', data: btoa(String.fromCharCode(...new TextEncoder().encode(text))) })
     window.DeepSeekAndroid = {
+      appReady() {
+        harness.readyCalls++
+      },
+      startupFailed(message: string) {
+        harness.startupErrors.push(message)
+      },
       request(payload: string) {
         const request = JSON.parse(payload)
         harness.requests.push(request)
@@ -208,6 +218,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('Android mobile chat, binary upload, export, theme and browser links', async ({ page }) => {
+  await expect.poll(() => page.evaluate(() => window.AndroidTest.readyCalls)).toBe(1)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.screenshot({ path: 'test-results/android-welcome.png' })
@@ -323,6 +334,31 @@ test('a failed startup script shows details and can reload without clearing sett
   expect(await page.evaluate(() => localStorage.getItem('chat-demo:api-key'))).toBe(
     'sk-android-test-only'
   )
+})
+
+test('loading stays visible until app mount reports readiness', async ({ page }) => {
+  await page.route('https://appassets.androidplatform.net/static/js/main.*.js', (route) =>
+    route.fulfill({ body: '', contentType: 'text/javascript' })
+  )
+  await page.reload()
+  await expect(page.locator('#startup-title')).toHaveText('加载中')
+  await expect(page.locator('#startup-logo svg')).toBeVisible()
+  expect(await page.evaluate(() => window.AndroidTest.readyCalls)).toBe(0)
+  await page.screenshot({ path: 'test-results/android-loading.png' })
+})
+
+test('compatibility initialization errors are reported before app readiness', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.matchMedia = () => {
+      throw new Error('compatibility-init failure')
+    }
+  })
+  await page.reload()
+  await expect(page.locator('#startup-detail')).toContainText('compatibility-init failure')
+  await expect
+    .poll(() => page.evaluate(() => window.AndroidTest.startupErrors.length))
+    .toBeGreaterThan(0)
+  expect(await page.evaluate(() => window.AndroidTest.readyCalls)).toBe(0)
 })
 
 test('custom Base URL is verified with the saved key and persists for chat and uploads', async ({

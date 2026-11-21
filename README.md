@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo). Configure your own **API Key, Base URL and model**. The app uses the system WebView and a native HTTPS bridge; its APK is about **1.91 MB**. No Android Studio, Gradle or emulator is required.
+A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo). Configure your own **API Key, Base URL and model**. The app uses the system WebView and a native HTTPS bridge; its APK is about **1.92 MB**. No Android Studio, Gradle or emulator is required.
 
 <img src="resources/deepseek-app-icon.svg" width="88" height="88" alt="DeepSeek app icon" />
 
@@ -10,13 +10,17 @@ A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.c
 
 [Download the Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [Android build and usage guide](ANDROID.md)
 
-Requires Android 8.0 or later. A recent system WebView is recommended; v0.1.7 adds fallbacks for older startup APIs and viewport units, with visible errors and a reload button if startup fails. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
+Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.8 shows a centered DeepSeek logo and a gray “加载中” loading label. A native 15-second timer displays diagnostics, retry and copy buttons if startup does not finish, even when JavaScript never runs. Older startup API and viewport fallbacks are retained. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
 
 1. Install the APK from Releases.
 2. Open **Settings → Data**, enter an API Key and an HTTPS Base URL, then confirm to save.
 3. Under **Chat model**, fetch the model list and select a model, or enter a custom model ID. Confirm to save.
 
 New messages and regenerated replies use the selected model. Continuation uses the original reply's model. Connection settings and model selection persist across restarts. Released updates keep the same signing certificate, so you can install them over an earlier release to retain local data.
+
+If startup remains on the loading screen, wait 15 seconds and use **复制诊断** to copy the app version, WebView version and startup error details for a bug report. Retry keeps your local history. The reported device's startup cause has not yet been confirmed.
+
+<img src="docs/images/android-loading.png" width="260" alt="Centered DeepSeek logo with gray loading label" />
 
 ## Getting started
 
@@ -83,7 +87,7 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | `pnpm test:android`  | Test mobile UI and the simulated bridge |
 | `pnpm format`        | Format with oxfmt                       |
 
-CI checks types, lint, model parsing, frontend/native URL handling and the web build. Mobile UI tests use an existing Microsoft Edge installation and do not need an emulator or a real API Key. APK packaging verifies signatures, alignment and the manifest. Android device testing has not yet been performed.
+CI checks types, lint, model parsing, frontend/native URL handling and the web build. The 12 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including loading, readiness and early startup errors; they do not need an emulator or a real API Key. APK packaging verifies signatures, alignment and the manifest. Android device testing, including the native startup timer and diagnostics, has not yet been performed.
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 

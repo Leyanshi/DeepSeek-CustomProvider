@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unzipSync, zipSync } from 'fflate'
 import { writeBrandAssets } from './brand-assets.mjs'
+import { normalizeApkEntries, verifyApkAssets } from './android-assets.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const { version } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
@@ -117,7 +118,7 @@ run(path.join(tools, 'aapt2.exe'), [
   '--target-sdk-version',
   '35',
   '--version-code',
-  '6',
+  '7',
   '--version-name',
   version,
   '--java',
@@ -164,7 +165,7 @@ run(java('java'), [
   dex,
   classArchive,
 ])
-const apkEntries = unzipSync(readFileSync(path.join(build, 'resources.apk')))
+const apkEntries = normalizeApkEntries(unzipSync(readFileSync(path.join(build, 'resources.apk'))))
 // Android 11+ requires resources.arsc to be uncompressed and aligned.
 apkEntries['resources.arsc'] = [apkEntries['resources.arsc'], { level: 0 }]
 apkEntries['classes.dex'] = new Uint8Array(readFileSync(path.join(dex, 'classes.dex')))
@@ -236,6 +237,17 @@ run(
   { env }
 )
 run(java('java'), ['-jar', path.join(tools, 'lib/apksigner.jar'), 'verify', '--verbose', output])
+const webRoot = path.join(root, 'dist')
+const expectedAssets = Object.fromEntries(
+  filesUnder(webRoot, '').map((filename) => [
+    path.relative(webRoot, filename).split(path.sep).join('/'),
+    readFileSync(filename),
+  ])
+)
+verifyApkAssets(unzipSync(readFileSync(output)), expectedAssets)
+process.stdout.write(
+  `Verified all ${Object.keys(expectedAssets).length} bundled web assets and Android ZIP paths.\n`
+)
 run(path.join(tools, 'zipalign.exe'), ['-c', '-p', '4', output])
 run(path.join(tools, 'aapt2.exe'), ['dump', 'badging', output])
 writeFileSync(

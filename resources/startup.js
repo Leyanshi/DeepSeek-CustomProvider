@@ -1,5 +1,6 @@
 /* Runs before the app bundle, using syntax older Android WebViews can parse. */
 ;(function () {
+  window.__deepseekStartupPhase = '已进入启动脚本'
   function define(target, name, value) {
     if (typeof target[name] !== 'function') {
       Object.defineProperty(target, name, { value: value, configurable: true, writable: true })
@@ -10,6 +11,7 @@
     if (!state) {
       return
     }
+    window.__deepseekStartupPhase = '启动脚本报告错误'
     document.getElementById('startup-title').textContent = '页面未能启动'
     var version = navigator.userAgent.match(/Chrome\/([\d.]+)/)
     document.getElementById('startup-detail').textContent =
@@ -72,6 +74,7 @@
         this.removeListener(listener)
       }
     })
+    window.__deepseekStartupPhase = '兼容初始化完成'
   } catch (error) {
     fail(error && error.message ? error.message : error)
   }

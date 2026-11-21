@@ -47,5 +47,8 @@ jobs:
       - name: Test frontend and native API URLs
         run: pnpm test:base-url
 
+      - name: Test Android asset packaging
+        run: pnpm test:android-assets
+
       - name: Build web app
         run: pnpm build

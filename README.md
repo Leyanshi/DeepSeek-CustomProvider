@@ -10,7 +10,7 @@ A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.c
 
 [Download the Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [Android build and usage guide](ANDROID.md)
 
-Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.8 shows a centered DeepSeek logo and a gray “加载中” loading label. A native 15-second timer displays diagnostics, retry and copy buttons if startup does not finish, even when JavaScript never runs. Older startup API and viewport fallbacks are retained. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
+Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.9 fixes Windows separators in APK asset paths that prevented Android from loading the scripts, and verifies every bundled web file after signing. The loading screen shows a centered DeepSeek logo and a gray “加载中” label. A native 15-second timer displays diagnostics if startup does not finish; copying checks the clipboard and opens a native report dialog, with TXT export available. Older startup API and viewport fallbacks are retained. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
 
 1. Install the APK from Releases.
 2. Open **Settings → Data**, enter an API Key and an HTTPS Base URL, then confirm to save.
@@ -18,7 +18,7 @@ Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.8 sh
 
 New messages and regenerated replies use the selected model. Continuation uses the original reply's model. Connection settings and model selection persist across restarts. Released updates keep the same signing certificate, so you can install them over an earlier release to retain local data.
 
-If startup remains on the loading screen, wait 15 seconds and use **复制诊断** to copy the app version, WebView version and startup error details for a bug report. Retry keeps your local history. The reported device's startup cause has not yet been confirmed.
+If startup remains on the loading screen, wait 15 seconds and choose **查看 / 导出诊断 → 导出 TXT**. Attach the saved `DeepSeek-startup-diagnostic.txt` or a screenshot of the native diagnostic dialog to a bug report if pasting copied text remains empty. The report includes app and Android versions, device model, WebView version, startup stages and any captured errors. Retry keeps your local history. The reported device's startup and clipboard causes have not yet been confirmed.
 
 <img src="docs/images/android-loading.png" width="260" alt="Centered DeepSeek logo with gray loading label" />
 
@@ -75,19 +75,20 @@ Settings → Data → Delete all chats clears all local conversations, original 
 
 ## Development
 
-| Command              | Description                             |
-| -------------------- | --------------------------------------- |
-| `pnpm dev`           | Start the development server            |
-| `pnpm build`         | Build the web app into `dist/`          |
-| `pnpm pack:android`  | Build and sign the Android APK          |
-| `pnpm type`          | Run TypeScript type checks              |
-| `pnpm lint`          | Lint with oxlint                        |
-| `pnpm test:models`   | Test model catalogs and custom IDs      |
-| `pnpm test:base-url` | Test frontend and native URL handling   |
-| `pnpm test:android`  | Test mobile UI and the simulated bridge |
-| `pnpm format`        | Format with oxfmt                       |
+| Command                    | Description                             |
+| -------------------------- | --------------------------------------- |
+| `pnpm dev`                 | Start the development server            |
+| `pnpm build`               | Build the web app into `dist/`          |
+| `pnpm pack:android`        | Build and sign the Android APK          |
+| `pnpm type`                | Run TypeScript type checks              |
+| `pnpm lint`                | Lint with oxlint                        |
+| `pnpm test:models`         | Test model catalogs and custom IDs      |
+| `pnpm test:base-url`       | Test frontend and native URL handling   |
+| `pnpm test:android-assets` | Test Android ZIP paths and web assets   |
+| `pnpm test:android`        | Test mobile UI and the simulated bridge |
+| `pnpm format`              | Format with oxfmt                       |
 
-CI checks types, lint, model parsing, frontend/native URL handling and the web build. The 12 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including loading, readiness and early startup errors; they do not need an emulator or a real API Key. APK packaging verifies signatures, alignment and the manifest. Android device testing, including the native startup timer and diagnostics, has not yet been performed.
+CI checks types, lint, model parsing, frontend/native URL handling, Android asset packaging and the web build. The 12 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including loading, readiness and early startup errors; they do not need an emulator or a real API Key. Five packaging tests cover ZIP paths, collisions, missing files and stale contents. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing, including the native startup timer, clipboard and TXT export, has not yet been performed.
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 

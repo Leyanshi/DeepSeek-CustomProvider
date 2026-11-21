@@ -1,6 +1,6 @@
 {
   "name": "chat-demo",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "基于 DeepSeek API 的静态聊天示例。",
   "license": "MIT",
   "private": true,
@@ -12,6 +12,7 @@
     "build:android": "node scripts/build-web.mjs --android",
     "pack:android": "node scripts/build-web.mjs --android && node scripts/build-android.mjs",
     "test:android": "node scripts/build-web.mjs --android && playwright test",
+    "test:android-assets": "node --test tests/android-assets.test.mjs",
     "test:base-url": "node --experimental-strip-types --test tests/base-url.test.mjs && node scripts/test-android-endpoint.mjs",
     "test:models": "node --experimental-strip-types --test tests/models.test.mjs",
     "type": "tsc -p tsconfig.json",

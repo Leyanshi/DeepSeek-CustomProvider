@@ -2,6 +2,7 @@ package com.chatdemo.deepseek.android;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -47,6 +48,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -65,6 +67,7 @@ public final class MainActivity extends Activity {
     private static final int PICK_FILES = 10;
     private static final int SAVE_FILE = 11;
     private static final int MICROPHONE = 12;
+    private static final int SAVE_DIAGNOSTIC = 13;
     private static final long MAX_FILE = 256L * 1024 * 1024;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService workers = Executors.newFixedThreadPool(3);
@@ -78,6 +81,10 @@ public final class MainActivity extends Activity {
     private LinearLayout startupActions;
     private volatile boolean startupReady;
     private volatile String startupError = "";
+    private String startupFailureReason = "";
+    private String startupPageProbe = "尚未收到页面检测结果。";
+    private int startupAttempt;
+    private String pendingDiagnostic;
     private final Set<String> startupScripts = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
     private final Runnable startupTimeout = () -> {
         if (!this.destroyed && !startupReady) { showStartupFailure("启动超过 15 秒，页面没有报告启动完成。"); }
@@ -170,21 +177,23 @@ public final class MainActivity extends Activity {
         detailLayout.topMargin = dp(16);
         content.addView(startupDetail, detailLayout);
         startupActions = new LinearLayout(this);
+        startupActions.setOrientation(LinearLayout.VERTICAL);
         startupActions.setGravity(Gravity.CENTER);
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setGravity(Gravity.CENTER);
         Button retry = new Button(this);
         retry.setText("重新加载");
         retry.setOnClickListener(view -> { beginStartup(); webView.reload(); });
-        startupActions.addView(retry);
+        actionRow.addView(retry);
         Button copy = new Button(this);
         copy.setText("复制诊断");
-        copy.setOnClickListener(view -> {
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("DeepSeek 启动诊断", startupDetail.getText()));
-                notice("诊断已复制");
-            }
-        });
-        startupActions.addView(copy);
+        copy.setOnClickListener(view -> copyStartupDiagnostic());
+        actionRow.addView(copy);
+        startupActions.addView(actionRow);
+        Button details = new Button(this);
+        details.setText("查看 / 导出诊断");
+        details.setOnClickListener(view -> showDiagnosticDialog(startupDiagnostic(), "可长按文字选择，或导出为 TXT 文件。"));
+        startupActions.addView(details);
         content.addView(startupActions);
         startupPanel.addView(content, new ScrollView.LayoutParams(-1, -2));
     }
@@ -192,6 +201,9 @@ public final class MainActivity extends Activity {
     private void beginStartup() {
         startupReady = false;
         startupError = "";
+        startupFailureReason = "";
+        startupPageProbe = "尚未收到页面检测结果。";
+        startupAttempt++;
         startupScripts.clear();
         startupTitle.setText("加载中");
         startupDetail.setVisibility(View.GONE);
@@ -204,20 +216,103 @@ public final class MainActivity extends Activity {
     private void showStartupFailure(String reason) {
         if (destroyed || startupReady) { return; }
         ui.removeCallbacks(startupTimeout);
-        android.content.pm.PackageInfo provider = WebView.getCurrentWebViewPackage();
-        String version = "未知";
-        try { version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
-        ArrayList<String> scripts = new ArrayList<>(startupScripts);
-        Collections.sort(scripts);
-        String details = "App：" + version + "\nWebView：" + (provider == null ? "未知" : provider.packageName + " " + provider.versionName)
-            + "\nJavaScript：" + webView.getSettings().getJavaScriptEnabled()
-            + "\n已读取脚本：" + scripts.size() + "\n" + scripts
-            + "\n" + reason + (startupError.isEmpty() ? "" : "\n错误：" + startupError)
-            + "\n\n请重试或复制诊断反馈；不会清除聊天记录。";
+        startupFailureReason = reason;
         startupTitle.setText("启动未完成");
-        startupDetail.setText(details);
+        startupDetail.setText(startupDiagnostic());
         startupDetail.setVisibility(View.VISIBLE);
         startupActions.setVisibility(View.VISIBLE);
+        probeStartupPage();
+    }
+
+    private void probeStartupPage() {
+        int attempt = startupAttempt;
+        // ES5 probe reads only startup metadata, never conversations or API configuration.
+        String script = "(function(){return JSON.stringify({page:document.readyState,"
+            + "startup:window.__deepseekStartupPhase||'启动脚本未执行',"
+            + "bridge:typeof window.DeepSeekAndroid,"
+            + "readyCallback:window.DeepSeekAndroid?typeof window.DeepSeekAndroid.appReady:'缺少桥接',"
+            + "loading:!!document.getElementById('startup-state'),"
+            + "viewport:window.innerWidth+'x'+window.innerHeight});})()";
+        try {
+            webView.evaluateJavascript(script, value -> {
+                if (destroyed || startupReady || attempt != startupAttempt) { return; }
+                try {
+                    Object result = new org.json.JSONTokener(value).nextValue();
+                    if (result instanceof String) { startupPageProbe = (String) result; }
+                } catch (Exception ignored) { }
+                startupDetail.setText(startupDiagnostic());
+            });
+        } catch (Exception ignored) { }
+    }
+
+    /** Generate a fresh plain String; copying/exporting never depends on a TextView's contents. */
+    private String startupDiagnostic() {
+        String version = "未知";
+        try { version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
+        String providerName = "未知";
+        try {
+            android.content.pm.PackageInfo provider = WebView.getCurrentWebViewPackage();
+            if (provider != null) { providerName = provider.packageName + " " + provider.versionName; }
+        } catch (Exception ignored) { }
+        ArrayList<String> scripts = new ArrayList<>(startupScripts);
+        Collections.sort(scripts);
+        return "DeepSeek 启动诊断\nApp：" + version
+            + "\nAndroid：" + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + ")"
+            + "\n设备：" + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
+            + "\nWebView：" + providerName
+            + "\nJavaScript：" + webView.getSettings().getJavaScriptEnabled()
+            + "\n已读取脚本：" + scripts.size() + "\n" + scripts
+            + "\n状态：" + (startupFailureReason.isEmpty() ? "尚未收到页面启动完成的通知。" : startupFailureReason)
+            + "\n错误：" + (startupError.isEmpty() ? "尚未捕获到错误。" : startupError)
+            + "\n页面检测：" + startupPageProbe
+            + "\n\n可复制或导出诊断反馈；重新加载不会清除聊天记录。";
+    }
+
+    private void copyStartupDiagnostic() {
+        String report = startupDiagnostic();
+        String result = "系统未能完成复制，请直接查看文字或导出 TXT。";
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("DeepSeek 启动诊断", report));
+                ClipData copied = clipboard.getPrimaryClip();
+                CharSequence text = copied != null && copied.getItemCount() > 0 ? copied.getItemAt(0).getText() : null;
+                result = text != null && report.equals(text.toString())
+                    ? "已核对系统剪贴板中的诊断文本。如果粘贴仍为空，请导出 TXT。"
+                    : "系统剪贴板未返回相同文本，请直接查看文字或导出 TXT。";
+            }
+        } catch (Exception ignored) { }
+        // Always show the exact report, including when another app prevents pasting.
+        showDiagnosticDialog(report, result);
+    }
+
+    private void showDiagnosticDialog(String report, String status) {
+        if (destroyed) { return; }
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        TextView text = new TextView(this);
+        text.setText(status + "\n\n" + report);
+        text.setTextSize(14);
+        text.setTextColor(Color.DKGRAY);
+        text.setBackgroundColor(Color.WHITE);
+        text.setPadding(dp(20), dp(16), dp(20), dp(16));
+        text.setTextIsSelectable(true);
+        scroll.addView(text);
+        new AlertDialog.Builder(this).setTitle("启动诊断").setView(scroll)
+            .setPositiveButton("导出 TXT", (dialog, button) -> exportStartupDiagnostic(report))
+            .setNegativeButton("关闭", null).show();
+    }
+
+    private void exportStartupDiagnostic(String report) {
+        pendingDiagnostic = report;
+        try {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("text/plain").putExtra(Intent.EXTRA_TITLE, "DeepSeek-startup-diagnostic.txt");
+            startActivityForResult(intent, SAVE_DIAGNOSTIC);
+        } catch (ActivityNotFoundException error) {
+            pendingDiagnostic = null;
+            showDiagnosticDialog(report, "没有找到系统文件保存窗口，请长按诊断文字选择，或截取此窗口。");
+        }
     }
 
     private boolean trusted(Uri uri) {
@@ -363,7 +458,25 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
-        if (code == PICK_FILES && fileChooser != null) {
+        if (code == SAVE_DIAGNOSTIC) {
+            String report = pendingDiagnostic;
+            pendingDiagnostic = null;
+            if (report == null) { return; }
+            if (result != RESULT_OK || data == null || data.getData() == null) {
+                notice("已取消诊断导出"); return;
+            }
+            Uri destination = data.getData();
+            workers.execute(() -> {
+                try (OutputStream out = getContentResolver().openOutputStream(destination, "w")) {
+                    if (out == null) { throw new Exception("No destination"); }
+                    out.write(report.getBytes(StandardCharsets.UTF_8));
+                } catch (Exception error) {
+                    ui.post(() -> showDiagnosticDialog(report, "诊断保存失败，请重试，或截取此窗口。"));
+                    return;
+                }
+                notice("诊断 TXT 已保存");
+            });
+        } else if (code == PICK_FILES && fileChooser != null) {
             ArrayList<Uri> selected = new ArrayList<>();
             if (result == RESULT_OK && data != null) {
                 ClipData clip = data.getClipData();

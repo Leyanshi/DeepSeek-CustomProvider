@@ -9,6 +9,9 @@ const localPolicy = (
 if (!localPolicy) {
   throw new Error('Android content policy is missing')
 }
+const apkAssets = process.env.DS_ANDROID_TEST_APK
+  ? unzipSync(new Uint8Array(await readFile(process.env.DS_ANDROID_TEST_APK)))
+  : undefined
 
 type Harness = {
   requests: {
@@ -31,6 +34,7 @@ type Harness = {
 declare global {
   interface Window {
     AndroidTest: Harness
+    __deepseekStartupPhase?: string
   }
 }
 
@@ -47,8 +51,14 @@ test.beforeEach(async ({ page }) => {
       '.ttf': 'font/ttf',
     }
     try {
+      const body = apkAssets
+        ? apkAssets[`assets${pathname === '/' ? '/index.html' : pathname}`]
+        : await readFile(filename)
+      if (!body) {
+        throw new Error('Requested asset is missing from the APK')
+      }
       await route.fulfill({
-        body: await readFile(filename),
+        body: Buffer.from(new Uint8Array(body)),
         contentType: types[path.extname(filename)] || 'application/octet-stream',
         headers: { 'Content-Security-Policy': localPolicy, 'X-Content-Type-Options': 'nosniff' },
       })
@@ -344,6 +354,7 @@ test('loading stays visible until app mount reports readiness', async ({ page })
   await expect(page.locator('#startup-title')).toHaveText('加载中')
   await expect(page.locator('#startup-logo svg')).toBeVisible()
   expect(await page.evaluate(() => window.AndroidTest.readyCalls)).toBe(0)
+  expect(await page.evaluate(() => window.__deepseekStartupPhase)).toBe('兼容初始化完成')
   await page.screenshot({ path: 'test-results/android-loading.png' })
 })
 
@@ -359,6 +370,7 @@ test('compatibility initialization errors are reported before app readiness', as
     .poll(() => page.evaluate(() => window.AndroidTest.startupErrors.length))
     .toBeGreaterThan(0)
   expect(await page.evaluate(() => window.AndroidTest.readyCalls)).toBe(0)
+  expect(await page.evaluate(() => window.__deepseekStartupPhase)).toBe('启动脚本报告错误')
 })
 
 test('custom Base URL is verified with the saved key and persists for chat and uploads', async ({

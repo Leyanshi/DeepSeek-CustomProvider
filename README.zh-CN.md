@@ -10,7 +10,7 @@
 
 [下载 Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [安装与构建详细说明](ANDROID.md)
 
-支持 Android 8.0 及以上，推荐较新的系统 WebView，不依赖 Google Play 服务。v0.1.8 启动画面为居中的 DeepSeek LOGO 和灰色「加载中」；原生计时器在启动未完成时于 15 秒后显示诊断、重试和复制按钮，即使网页脚本没有运行也能提示。保留旧内核启动 API 和视口高度兼容。手机上显示的应用名称为 **DeepSeek**。这是社区客户端，并非 DeepSeek 官方应用。
+支持 Android 8.0 及以上，推荐较新的系统 WebView，不依赖 Google Play 服务。v0.1.9 修复 APK 内网页资源使用 Windows 路径导致 Android 读不到脚本的问题，并在签名后逐个验证全部网页文件。启动画面为居中的 DeepSeek LOGO 和灰色「加载中」；启动未完成时原生计时器在 15 秒后显示诊断。复制后检查剪贴板文本，并始终显示原生诊断窗口，可直接导出 TXT。保留旧内核启动 API 和视口高度兼容。手机上显示的应用名称为 **DeepSeek**。这是社区客户端，并非 DeepSeek 官方应用。
 
 1. 从 Releases 下载 APK，传到手机安装。
 2. 打开「设置 → 数据管理」，填写 API Key 和 HTTPS Base URL，点击「确定」保存。
@@ -18,7 +18,7 @@
 
 新消息、编辑提问和重新生成使用当前所选模型，继续生成沿用原回答的模型。连接配置和模型会保留到下次启动。正式发布版本使用同一签名，可以覆盖安装旧版并保留本机数据。
 
-若仍停在加载画面，请等待 15 秒并点击「复制诊断」，反馈应用版本、WebView 版本和错误详情。重试保留本机聊天记录。用户手机上持续加载的原因尚未确认。
+若仍停在加载画面，请等待 15 秒，点击「查看 / 导出诊断 → 导出 TXT」。若复制后粘贴仍为空，可反馈保存的 `DeepSeek-startup-diagnostic.txt` 或诊断窗口截图。报告包含应用及 Android 版本、设备机型、WebView 版本、启动阶段和捕获的错误。重试保留本机聊天记录。用户手机上持续加载和粘贴为空的原因尚未确认。
 
 <img src="docs/images/android-loading.png" width="260" alt="居中 DeepSeek LOGO 和灰色加载中" />
 
@@ -75,19 +75,20 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 
 ## 开发
 
-| 命令                 | 用途                         |
-| -------------------- | ---------------------------- |
-| `pnpm dev`           | 启动开发服务器               |
-| `pnpm build`         | 网页构建到 `dist/`           |
-| `pnpm pack:android`  | 构建并签名 Android APK       |
-| `pnpm type`          | TypeScript 类型检查          |
-| `pnpm lint`          | oxlint 检查                  |
-| `pnpm test:models`   | 模型列表解析与自定义 ID 测试 |
-| `pnpm test:base-url` | 前端与原生 URL 测试          |
-| `pnpm test:android`  | 手机尺寸界面与桥接测试       |
-| `pnpm format`        | oxfmt 格式化                 |
+| 命令                       | 用途                         |
+| -------------------------- | ---------------------------- |
+| `pnpm dev`                 | 启动开发服务器               |
+| `pnpm build`               | 网页构建到 `dist/`           |
+| `pnpm pack:android`        | 构建并签名 Android APK       |
+| `pnpm type`                | TypeScript 类型检查          |
+| `pnpm lint`                | oxlint 检查                  |
+| `pnpm test:models`         | 模型列表解析与自定义 ID 测试 |
+| `pnpm test:base-url`       | 前端与原生 URL 测试          |
+| `pnpm test:android-assets` | Android ZIP 路径与资源测试   |
+| `pnpm test:android`        | 手机尺寸界面与桥接测试       |
+| `pnpm format`              | oxfmt 格式化                 |
 
-CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试及网页构建。12 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸和 Android 桥接，覆盖加载页、启动完成通知和早期初始化错误，不安装模拟器，也不需要真实 API Key。打包时自动检查 APK 签名、对齐和清单。尚未进行 Android 真机测试，包括原生启动计时和诊断。
+CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试、Android 资源打包测试及网页构建。12 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸和 Android 桥接，覆盖加载页、启动完成通知和早期初始化错误，不安装模拟器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径、资源保留、冲突、缺失文件及内容过期。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试，包括原生启动计时、剪贴板和 TXT 导出。
 
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 

@@ -77,7 +77,7 @@ export type AssistantMessage = MessageBranch & {
   id: string
   role: 'assistant'
   createdAt: number
-  /** 未记录模型时为 null，续写使用当前默认模型。 */
+  /** 未记录模型时为 null，续写使用设置中选择的模型。 */
   model: ChatModel | null
   /** 请求时是否开启深度思考 */
   thinking?: boolean

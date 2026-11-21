@@ -1,18 +1,30 @@
-# chat-demo
+# DeepSeek CustomProvider
 
 English | [简体中文](README.zh-CN.md)
 
-A static chat demo powered by the DeepSeek API. No application backend is required: the browser connects directly to the configured API service.
+A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo). Configure your own **API Key, Base URL and model**. The app uses the system WebView and a native HTTPS bridge; its APK is about **1.91 MB**. No Android Studio, Gradle or emulator is required.
 
-You can [try the app online](https://deepseek-ai.github.io/chat-demo/) or download the archive from [Releases](https://github.com/deepseek-ai/deepseek-chat-demo/releases), extract it, and double-click `index.html` to use it locally without installation or a build. Enter your API key in Settings before your first chat.
+<img src="resources/deepseek-app-icon.svg" width="88" height="88" alt="DeepSeek app icon" />
+
+## Download and use
+
+[Download the Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [Android build and usage guide](ANDROID.md)
+
+Requires Android 8.0 or later and a system WebView supporting Chromium 105 or later. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
+
+1. Install the APK from Releases.
+2. Open **Settings → Data**, enter an API Key and an HTTPS Base URL, then confirm to save.
+3. Under **Chat model**, fetch the model list and select a model, or enter a custom model ID. Confirm to save.
+
+New messages and regenerated replies use the selected model. Continuation uses the original reply's model. Connection settings and model selection persist across restarts. Released updates keep the same signing certificate, so you can install them over an earlier release to retain local data.
 
 ## Getting started
 
-Install Node.js 22.12+ and pnpm, then run:
+Install Node.js 24 and pnpm 12.21.0, then run:
 
 ```sh
-git clone https://github.com/deepseek-ai/chat-demo.git
-cd chat-demo
+git clone https://github.com/Leyanshi/DeepSeek-CustomProvider.git
+cd DeepSeek-CustomProvider
 pnpm install
 pnpm dev
 ```
@@ -27,8 +39,22 @@ pnpm build
 
 The output is written to `dist/`. Deploy it to a static web server or open `dist/index.html` directly. Opening the file directly requires browser support for storage on `file://` pages and an API service that permits their cross-origin requests.
 
+To package the Android app on **Windows with JDK 11+**:
+
+```powershell
+corepack pnpm install --frozen-lockfile
+corepack pnpm pack:android
+```
+
+Set `JAVA_HOME` or `DS_ANDROID_JAVA_HOME` to your existing JDK. The first Android build downloads and verifies official Android tool archives, retaining only about 48 MB of required files in `.android-tools/`. The output is `release/DeepSeek-Android-<version>.apk`. See [ANDROID.md](ANDROID.md) for details.
+
+Each fresh checkout generates its own local signing key in `android/.signing/`. Keep that directory for subsequent builds; a locally signed APK cannot update an APK signed by another key. Signing keys, tool downloads and build output are excluded from Git. GitHub Pages deployment is a manual workflow, available after enabling Pages with GitHub Actions in repository settings.
+
 ## Features
 
+- Custom API Key and HTTPS Base URL, with service roots, ports, path prefixes and `/v1` supported.
+- Fetch models using the entered connection; select a returned model or enter an unlisted custom model ID.
+- Bundled UI and DeepSeek SVG branding, a white rounded launcher icon, and the native Android HTTPS bridge.
 - Multiple conversations with automatic titles, renaming, and deletion; edit prompts, regenerate replies, and switch between message branches.
 - Streaming replies, deep thinking, smart search, link reading, and source citations; stop generation or continue eligible replies.
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
@@ -45,17 +71,23 @@ Settings → Data → Delete all chats clears all local conversations, original 
 
 ## Development
 
-| Command       | Description                  |
-| ------------- | ---------------------------- |
-| `pnpm dev`    | Start the development server |
-| `pnpm build`  | Build into `dist/`           |
-| `pnpm type`   | Run TypeScript type checks   |
-| `pnpm lint`   | Lint with oxlint             |
-| `pnpm format` | Format with oxfmt            |
+| Command              | Description                             |
+| -------------------- | --------------------------------------- |
+| `pnpm dev`           | Start the development server            |
+| `pnpm build`         | Build the web app into `dist/`          |
+| `pnpm pack:android`  | Build and sign the Android APK          |
+| `pnpm type`          | Run TypeScript type checks              |
+| `pnpm lint`          | Lint with oxlint                        |
+| `pnpm test:models`   | Test model catalogs and custom IDs      |
+| `pnpm test:base-url` | Test frontend and native URL handling   |
+| `pnpm test:android`  | Test mobile UI and the simulated bridge |
+| `pnpm format`        | Format with oxfmt                       |
+
+CI checks types, lint, model parsing, frontend/native URL handling and the web build. Mobile UI tests use an existing Microsoft Edge installation and do not need an emulator or a real API Key. APK packaging verifies signatures, alignment and the manifest. Android device testing has not yet been performed.
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 
-Chat uses `deepseek-flash` by default through Anthropic-compatible Messages / Files APIs. Speech features use ASR / TTS endpoints. Requests include extensions for search, link reading, titles, and `latest_reminder`, so the configured service must support the corresponding capabilities. Supported attachment formats are determined by server-side validation.
+Chat uses `deepseek-flash` by default through **Anthropic-compatible Messages / Files APIs**. The selected service must support that protocol and the selected model. Changing Base URL or model does not convert requests to OpenAI Chat Completions. Speech features use ASR / TTS endpoints. Requests include extensions for search, link reading, titles, and `latest_reminder`, so the configured service must support the corresponding capabilities. Supported attachment formats are determined by server-side validation.
 
 ```text
 src/
@@ -72,4 +104,4 @@ src/
 
 ## License
 
-[MIT](LICENSE). The build copies the license to `dist/LICENSE`; include it when distributing the app. Third-party dependencies are subject to their own licenses.
+[MIT](LICENSE), retaining DeepSeek's copyright notice and upstream source history. The bundled SVG comes from [DeepSeek's favicon](https://fe-static.deepseek.com/chat/favicon.svg). Builds include `LICENSE` and `THIRD-PARTY-NOTICES.txt`; dependency licenses remain applicable.

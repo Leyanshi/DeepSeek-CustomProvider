@@ -1,0 +1,65 @@
+# DeepSeek Android
+
+基于 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 的社区 Android 客户端。使用 Android 系统 WebView，APK 不内置 Chromium，也不需要 Google Play 服务。
+
+应用名称为「DeepSeek」。桌面图标采用[用户指定的 DeepSeek SVG](https://fe-static.deepseek.com/chat/favicon.svg)，配白色圆角背景；侧边栏原名称位置显示同一 SVG。图标已内置，打开应用无需联网下载。原始图形保存于 `resources/deepseek.svg`，构建时直接生成 Android 矢量图标，不增加图片处理工具。
+
+## 安装
+
+将 `release/DeepSeek-Android-0.1.6.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，系统 WebView 需要支持 Chromium 105 及以上的网页能力。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 4，可覆盖安装 0.1.3、0.1.4 或 0.1.5 并保留原有数据。
+
+首次打开，在「设置 → 数据管理」中填写 Base URL 和 API Key，点击「确定」验证后保存。默认 Base URL 为 `https://api.deepseek.com`；可在 [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) 获取 Key。只修改 Base URL 时可以沿用已保存的 Key，验证失败会保留原配置。联网聊天按服务提供方的规则计费，界面资源在本机加载。
+
+Base URL 支持 HTTPS 域名、端口和路径前缀。填写服务根地址时，例如 `https://example.com/proxy`，聊天请求发送到 `/proxy/anthropic/v1/messages`；填写 `https://example.com/v1` 时发送到 `/v1/messages`，不会重复追加 `/v1`。附件、Key 验证和语音同样跟随新地址。留空或点击「恢复 DeepSeek 默认地址」后确认可恢复默认配置。
+
+在同一页的「聊天模型」中点击「获取模型」，会使用正在填写的 Base URL 和 API Key 请求 `/models`，获取列表后即可选择模型，也可直接填写「自定义模型 ID」。点击「确定」后，连接配置与模型一起保存；获取列表本身不会提交正在编辑的配置，也不会自动替换已选模型。列表支持标准的 `{data: [{id: "模型 ID"}]}` 响应和 Anthropic 的 `display_name`，重复或无效条目会跳过。
+
+模型 ID 保存在本机，重启后沿用。新消息、编辑提问和重新生成使用当前选定的模型；继续生成保留原回答的模型。首次使用及从旧版升级的默认模型为 `deepseek-flash`。服务返回空列表或获取失败时可重试、手动填写；仅修改已保存连接的模型无需再次验证 `/models`。更换 Base URL 或 API Key 仍需通过 `/models` 验证后保存。
+
+自定义服务需支持 Anthropic Messages 接口与所选模型，更换地址和模型不会将请求改为 OpenAI Chat Completions 协议。搜索、附件和语音仍需服务支持对应扩展。Base URL 不允许 HTTP、用户名、密码、查询参数或 URL 片段。
+
+保留流式聊天、停止生成、附件、公式与图表、主题、语音、聊天记录导入导出功能。文件选择和 ZIP 导出使用 Android 的系统文件窗口，不申请全盘存储权限；录音时才申请麦克风权限。搜索、附件和语音是否可用取决于 DeepSeek API 对相应接口和模型的支持。
+
+## 轻量构建
+
+不安装 Android Studio、Gradle、模拟器、NDK 或整套 SDK。复用现有 Node.js 和 JDK 11+，直接用 `aapt2 → javac → d8 → zipalign → apksigner` 构建和签名。
+
+```powershell
+corepack pnpm install
+corepack pnpm pack:android
+```
+
+首次构建从 Google 官方下载两个归档，校验 SHA-1 后只保留必需的文件到 `.android-tools/`，约 48 MB。不会修改系统 PATH 或 Java 配置。下载缓存位于 `tmp/android-tools/`，工具提取完成后可删除。后续打包直接复用 `.android-tools/`。
+
+使用其他 JDK 时可指定：
+
+```powershell
+$env:DS_ANDROID_JAVA_HOME = 'D:\Environments\jdk\jdk17'
+corepack pnpm pack:android
+```
+
+构建脚本目前支持 Windows 主机，输出为 Android APK。`pnpm build` 仍构建普通网页，`pnpm build:android` 构建供 APK 内置的网页。
+
+## 验证
+
+```powershell
+corepack pnpm type
+corepack pnpm lint
+corepack pnpm test:base-url
+corepack pnpm test:models
+corepack pnpm test:android
+```
+
+界面和桥接测试用电脑已有的 Edge 在手机尺寸下运行，模拟 Android 原生 API，不需要真实 API Key，不产生调用费用，也不安装测试浏览器或模拟器。覆盖流式聊天、取消请求、二进制附件、ZIP 导出、主题、外部链接、Base URL 验证与恢复默认、使用待保存连接获取模型、模型选择及持久化、自定义 ID、重新生成和续写的请求模型、列表为空或失败时的重试。模型解析测试检查列表格式、名称、重复条目和 ID 校验；Base URL 测试同时检查前端和 Android 原生的 URL 拼接及接口边界。打包脚本自动验证 APK 签名、文件对齐与 Android 清单。
+
+这些检查不代替 Android 真机验收。目前没有进行真机上的系统文件窗口、麦克风和键盘适配测试。
+
+## 数据与更新
+
+API Key、Base URL、模型与设置保存于应用私有 WebView 存储，对话和附件保存于 IndexedDB。没有增加 API Key 加密，与上游行为一致。清除应用数据或卸载会删除本机记录，建议先导出 ZIP。导出的 ZIP 不包含 API Key、Base URL 或其他设置。
+
+网络桥向用户配置的 HTTPS 服务转发允许的 API 接口，不接受跨站重定向或任意请求头。单次 API 请求体上限 32 MB，单次本机导出上限 256 MB。应用没有后台服务、广告、遥测或自动更新。
+
+签名密钥和密码保存在 `android/.signing/`，已从 Git 忽略。保留并备份该目录，后续升级必须使用相同密钥和更高的 versionCode；不要将密钥公开提交。
+
+分发包保留上游 MIT `LICENSE` 和 `THIRD-PARTY-NOTICES.txt` 中的依赖许可证。此应用是社区封装，不是 DeepSeek 官方客户端。

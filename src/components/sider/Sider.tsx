@@ -13,6 +13,7 @@ import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
 import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
 import { SessionItem } from './SessionItem.js'
+import deepseekLogo from '../../../resources/deepseek.svg'
 import styles from './Sider.module.css'
 
 /** 展开的侧边栏：名称与收起按钮、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里，收起按钮关闭抽屉 */
@@ -52,7 +53,13 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   return (
     <div className={clsx(styles.sider, mobile && styles.mobile)}>
       <div className={styles.top}>
-        <div className={styles.appName}>{t('appName')}</div>
+        <img
+          className={styles.appLogo}
+          src={deepseekLogo}
+          alt={t('appName')}
+          width={32}
+          height={32}
+        />
         <IconButton
           size="m"
           icon={<IconPanelLeftOutline16 />}
@@ -148,7 +155,7 @@ export const MobileSider = () => {
   }
   return (
     <>
-      <div className={styles.drawerMask} onClick={closeMobileSider} />
+      <div data-android-back className={styles.drawerMask} onClick={closeMobileSider} />
       <div className={styles.drawer}>
         <Sider mobile />
       </div>

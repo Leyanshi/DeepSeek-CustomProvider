@@ -5,5 +5,13 @@
   "singleQuote": true,
   "printWidth": 100,
   "sortPackageJson": false,
-  "ignorePatterns": ["dist/**", "pnpm-lock.yaml"]
+  "ignorePatterns": [
+    "dist/**",
+    "release/**",
+    "test-results/**",
+    ".android-tools/**",
+    "android/build/**",
+    "android/.signing/**",
+    "pnpm-lock.yaml"
+  ]
 }

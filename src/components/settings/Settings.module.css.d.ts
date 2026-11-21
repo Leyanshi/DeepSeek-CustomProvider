@@ -22,6 +22,8 @@ declare const styles: {
   readonly "description": string;
   readonly "error": string;
   readonly "apiKey": string;
+  readonly "modelHeader": string;
+  readonly "modelSelect": string;
   readonly "apiKeySaved": string;
   readonly "apiKeyInput": string;
   readonly "apiKeyMask": string;

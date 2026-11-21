@@ -1,6 +1,9 @@
 node_modules/
 dist/
 build/
+release/
+test-results/
+playwright-report/
 .pnpm-store/
 .cache/
 *.log
@@ -9,3 +12,6 @@ build/
 .env.*
 !.env.example
 tmp/
+.android-tools/
+android/build/
+android/.signing/

@@ -211,6 +211,22 @@
   padding-bottom: 4px;
 }
 
+.modelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modelHeader button {
+  min-height: 40px;
+}
+
+.modelSelect {
+  width: 100%;
+  min-height: 44px;
+}
+
 .apiKeySaved,
 .apiKeyInput {
   display: flex;

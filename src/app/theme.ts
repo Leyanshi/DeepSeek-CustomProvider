@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { androidSystemDark, syncAndroidTheme } from '../services/android.js'
 import { useSettings, type ThemePreference } from '../services/settings.js'
 
 export type Theme = 'light' | 'dark'
@@ -7,10 +8,14 @@ const query = window.matchMedia('(prefers-color-scheme: dark)')
 
 const subscribeOsTheme = (listener: () => void) => {
   query.addEventListener('change', listener)
-  return () => query.removeEventListener('change', listener)
+  window.addEventListener('deepseek-system-theme', listener)
+  return () => {
+    query.removeEventListener('change', listener)
+    window.removeEventListener('deepseek-system-theme', listener)
+  }
 }
 
-const getOsTheme = (): Theme => (query.matches ? 'dark' : 'light')
+const getOsTheme = (): Theme => ((androidSystemDark() ?? query.matches) ? 'dark' : 'light')
 
 const resolveTheme = (preference: ThemePreference, osTheme: Theme): Theme =>
   preference === 'system' ? osTheme : preference
@@ -30,6 +35,7 @@ const syncPageBackground = () => {
 
 /** 同步页面主题、根画布背景和支持 theme-color 的浏览器栏。 */
 const applyTheme = (theme: Theme) => {
+  syncAndroidTheme(theme === 'dark')
   const body = document.body
   // 主题切换帧禁用过渡，使页面颜色同步更新
   body.classList.add('change-theme')
@@ -67,5 +73,6 @@ export const setupTheme = () => {
     window.addEventListener('load', syncPageBackground, { once: true })
   }
   query.addEventListener('change', syncTheme)
+  window.addEventListener('deepseek-system-theme', syncTheme)
   useSettings.subscribe(syncTheme)
 }

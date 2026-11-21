@@ -1,4 +1,8 @@
 import { translate, type TranslationMessage } from '../../i18n/index.js'
+import { androidFetch, isAndroidApp } from '../android.js'
+import { useSettings } from '../settings.js'
+import { resolveApiUrl } from './baseUrl.js'
+import { parseModels, type ApiModel } from './models.js'
 import { resizeUploadImage } from '../../utils/resizeUploadImage.js'
 import { readMessageEvent } from './parseEvent.js'
 import { readServerSentEvents } from './sse.js'
@@ -10,10 +14,6 @@ import type {
   MessageStreamEvent,
 } from './types.js'
 
-/** 构建期 API 地址，默认 https://api.deepseek.com；本地开发支持开发服务器代理 */
-export const API_ORIGIN = __API_ORIGIN__
-/** Anthropic 兼容接口的前缀 */
-const ANTHROPIC_BASE_URL = `${API_ORIGIN}/anthropic/v1`
 /** 引用 Files API 上传的图片、调用 Anthropic 兼容 Files API 时必须携带 */
 const FILES_BETA = 'files-api-2025-04-14'
 
@@ -67,10 +67,17 @@ const readErrorResponse = async (
   return new ApiError(kind, message, response.status)
 }
 
-export const request = async (url: string, init: RequestInit): Promise<Response> => {
+export const request = async (
+  endpoint: string,
+  init: RequestInit,
+  baseUrl = useSettings.getState().baseUrl
+): Promise<Response> => {
+  const url = isAndroidApp()
+    ? `https://appassets.androidplatform.net/api${endpoint}`
+    : resolveApiUrl(baseUrl, endpoint)
   let response: Response
   try {
-    response = await fetch(url, init)
+    response = await androidFetch(url, init, baseUrl)
   } catch (error) {
     if (init.signal?.aborted) {
       throw error
@@ -86,17 +93,51 @@ export const request = async (url: string, init: RequestInit): Promise<Response>
 const anthropicHeaders = (apiKey: string, beta: boolean): Record<string, string> => ({
   // DeepSeek 兼容接口的鉴权方式，也可使用 Authorization: Bearer。
   'x-api-key': apiKey,
+  'anthropic-version': '2023-06-01',
   // Files API 和通过 file_id 引用图片时必传；纯文本聊天无需携带。
   ...(beta ? { 'anthropic-beta': FILES_BETA } : {}),
 })
 
 /** 用 GET /models 校验 API Key（不产生费用） */
-export const verifyApiKey = async (apiKey: string, signal?: AbortSignal): Promise<void> => {
-  await request(`${API_ORIGIN}/models`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal,
-  })
+export const verifyApiKey = async (
+  apiKey: string,
+  signal?: AbortSignal,
+  baseUrl?: string
+): Promise<void> => {
+  await request(
+    '/models',
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}`, ...anthropicHeaders(apiKey, false) },
+      signal,
+    },
+    baseUrl
+  )
+}
+
+/** Fetch the model catalog using the entered connection without changing settings. */
+export const fetchModels = async (
+  apiKey: string,
+  signal?: AbortSignal,
+  baseUrl?: string
+): Promise<ApiModel[]> => {
+  const response = await request(
+    '/models',
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}`, ...anthropicHeaders(apiKey, false) },
+      signal,
+    },
+    baseUrl
+  )
+  try {
+    return parseModels(await response.json())
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error
+    }
+    throw new ApiError('protocol', { key: 'modelsInvalidResponse' })
+  }
 }
 
 /**
@@ -114,7 +155,7 @@ export const uploadFile = async (
     form.append('purpose', purpose)
   }
   form.append('file', purpose === null ? await resizeUploadImage(file, signal) : file)
-  const response = await request(`${ANTHROPIC_BASE_URL}/files`, {
+  const response = await request('/anthropic/v1/files', {
     method: 'POST',
     headers: anthropicHeaders(apiKey, true),
     body: form,
@@ -125,7 +166,7 @@ export const uploadFile = async (
 
 /** DELETE /anthropic/v1/files/{file_id} */
 export const deleteFile = async (apiKey: string, fileId: string): Promise<void> => {
-  await request(`${ANTHROPIC_BASE_URL}/files/${encodeURIComponent(fileId)}`, {
+  await request(`/anthropic/v1/files/${encodeURIComponent(fileId)}`, {
     method: 'DELETE',
     headers: anthropicHeaders(apiKey, true),
   })
@@ -147,7 +188,7 @@ export async function* streamMessage(
   body: CreateMessageRequest,
   signal: AbortSignal
 ): AsyncGenerator<MessageStreamEvent> {
-  const response = await request(`${ANTHROPIC_BASE_URL}/messages`, {
+  const response = await request('/anthropic/v1/messages', {
     method: 'POST',
     headers: {
       ...anthropicHeaders(apiKey, hasFile(body)),

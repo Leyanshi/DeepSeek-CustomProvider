@@ -18,20 +18,17 @@
   box-sizing: border-box;
   height: 48px;
   margin-bottom: 16px;
-  padding: 15px 0 10px 4px;
+  padding: 8px 0 8px 4px;
   flex-shrink: 0;
 }
 
-.appName {
-  min-width: 0;
-  padding-left: 4px;
-  overflow: hidden;
-  font-size: 20px;
-  line-height: 22px;
-  font-weight: 600;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--dsw-alias-brand-primary);
+.appLogo {
+  display: block;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  margin-left: 4px;
+  object-fit: contain;
 }
 
 .newChat {

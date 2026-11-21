@@ -71,12 +71,14 @@ export const createConfig = ({
         type: 'javascript/auto',
       },
       { test: /\.(woff2?|ttf)$/, type: 'asset/resource' },
+      { test: /\.svg$/, type: 'asset/resource' },
     ],
   },
   plugins: [
     // 经典 defer 脚本支持 file:// 页面的资源加载
     new rspack.HtmlRspackPlugin({
       template: './src/index.html',
+      favicon: './resources/deepseek-app-icon.svg',
       scriptLoading: 'defer',
       meta: { 'application-version': version },
     }),
@@ -90,4 +92,4 @@ export const createConfig = ({
 })
 
 // eslint-disable-next-line import/no-default-export
-export default defineConfig(createConfig())
+export default defineConfig(createConfig({ apiOrigin: process.env.CHAT_DEMO_API_ORIGIN }))

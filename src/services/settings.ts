@@ -1,15 +1,19 @@
 import { create } from 'zustand'
 import type { TtsVoice } from './api/speech.js'
 import { normalizeLocation, type UserLocation } from './location.js'
+import { DEFAULT_BASE_URL, normalizeBaseUrl } from './api/baseUrl.js'
+import { DEFAULT_MODEL, normalizeModelId } from './api/models.js'
 
 export type Locale = 'zh-CN' | 'en-US'
 
 /** 主题偏好；默认跟随系统 */
 export type ThemePreference = 'light' | 'dark' | 'system'
 
-/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、深度思考与智能搜索开关、侧边栏收起状态 */
+/** 本机设置，存 localStorage：API Key、Base URL、模型、语言、主题、位置及界面偏好 */
 type Settings = {
   apiKey: string | null
+  baseUrl: string
+  model: string
   locale: Locale
   themePreference: ThemePreference
   location: UserLocation | null
@@ -21,6 +25,8 @@ type Settings = {
 
 const KEYS = {
   apiKey: 'chat-demo:api-key',
+  baseUrl: 'chat-demo:base-url',
+  model: 'chat-demo:model',
   locale: 'chat-demo:locale',
   location: 'chat-demo:location',
   themePreference: 'chat-demo:theme-preference',
@@ -87,8 +93,29 @@ const initialThemePreference = (): ThemePreference => {
 /** 未保存过时使用服务端默认音色 stella（海星） */
 const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
 
+const initialBaseUrl = () => {
+  try {
+    const configured = __API_ORIGIN__.startsWith('https://appassets.androidplatform.net/')
+      ? DEFAULT_BASE_URL
+      : __API_ORIGIN__
+    return normalizeBaseUrl(read(KEYS.baseUrl) ?? configured)
+  } catch {
+    return DEFAULT_BASE_URL
+  }
+}
+
+const initialModel = () => {
+  try {
+    return normalizeModelId(read(KEYS.model) ?? DEFAULT_MODEL)
+  } catch {
+    return DEFAULT_MODEL
+  }
+}
+
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
+  baseUrl: initialBaseUrl(),
+  model: initialModel(),
   locale: initialLocale(),
   location: initialLocation(),
   themePreference: initialThemePreference(),
@@ -119,9 +146,17 @@ export const setTtsVoice = (ttsVoice: TtsVoice) => {
   useSettings.setState({ ttsVoice })
 }
 
-export const setApiKey = (apiKey: string | null) => {
+export const setApiConnection = (
+  apiKey: string,
+  baseUrl: string,
+  model = useSettings.getState().model
+) => {
+  const normalized = normalizeBaseUrl(baseUrl)
+  const normalizedModel = normalizeModelId(model)
   write(KEYS.apiKey, apiKey)
-  useSettings.setState({ apiKey })
+  write(KEYS.baseUrl, normalized)
+  write(KEYS.model, normalizedModel)
+  useSettings.setState({ apiKey, baseUrl: normalized, model: normalizedModel })
 }
 
 export const setThinking = (thinking: boolean) => {

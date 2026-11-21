@@ -98,6 +98,7 @@ public final class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setAllowFileAccess(false);
         // SAF-selected documents are read through their explicit content URI grants.
         settings.setAllowContentAccess(true);
@@ -171,13 +172,14 @@ public final class MainActivity extends Activity {
             String name = uri.getPath();
             if ("/".equals(name)) { name = "/index.html"; }
             if (!"GET".equals(request.getMethod()) || name == null || name.contains("..") || name.contains("\\") || name.indexOf('\0') >= 0
-                || !("/index.html".equals(name) || name.startsWith("/static/") || "/LICENSE".equals(name) || "/THIRD-PARTY-NOTICES.txt".equals(name))) {
+                || !("/index.html".equals(name) || name.startsWith("/static/") || "/deepseek-app-icon.svg".equals(name) || "/LICENSE".equals(name) || "/THIRD-PARTY-NOTICES.txt".equals(name))) {
                 return blocked(403, "Forbidden");
             }
             try {
                 Map<String, String> headers = new HashMap<>();
                 headers.put("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'");
                 headers.put("X-Content-Type-Options", "nosniff");
+                headers.put("Cache-Control", "no-store");
                 String type = mime(name);
                 return new WebResourceResponse(type, type.startsWith("text/") ? "UTF-8" : null, 200, "OK", headers, getAssets().open(name.substring(1)));
             } catch (Exception error) { return blocked(404, "Not Found"); }

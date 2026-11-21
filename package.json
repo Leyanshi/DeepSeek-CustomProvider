@@ -1,6 +1,6 @@
 {
   "name": "chat-demo",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "基于 DeepSeek API 的静态聊天示例。",
   "license": "MIT",
   "private": true,
@@ -15,7 +15,7 @@
     "test:base-url": "node --experimental-strip-types --test tests/base-url.test.mjs && node scripts/test-android-endpoint.mjs",
     "test:models": "node --experimental-strip-types --test tests/models.test.mjs",
     "type": "tsc -p tsconfig.json",
-    "lint": "oxlint src rspack.config.ts scripts tests playwright.config.ts",
+    "lint": "oxlint src rspack.config.ts scripts tests playwright.config.ts resources/startup.js",
     "format": "oxfmt --write ."
   },
   "dependencies": {

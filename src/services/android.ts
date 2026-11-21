@@ -1,3 +1,5 @@
+import { createId } from '../utils/id.js'
+
 /** The Android shell exposes a small bridge only to its bundled HTTPS document. */
 type AndroidBridge = {
   request: (payload: string) => void
@@ -122,7 +124,7 @@ export const androidFetch = async (
   if (init.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
-  const id = crypto.randomUUID()
+  const id = createId()
   return new Promise<Response>((resolve, reject) => {
     const cleanup = () => {
       pending.delete(id)
@@ -187,7 +189,7 @@ export const saveAndroidFile = async (blob: Blob, name: string, preview = false)
     throw new Error('Android 文件保存接口不可用')
   }
   listen()
-  const id = crypto.randomUUID()
+  const id = createId()
   if (!native.beginFile(id, name, blob.type || 'application/octet-stream')) {
     throw new Error('暂时无法创建文件，请重试')
   }

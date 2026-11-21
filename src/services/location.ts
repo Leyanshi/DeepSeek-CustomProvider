@@ -18,13 +18,19 @@ export type UserLocation = {
 
 const regions = new Set(regionCodes)
 const regionNames = {
-  'zh-CN': new Intl.DisplayNames(['zh-CN'], { type: 'region' }),
-  'en-US': new Intl.DisplayNames(['en-US'], { type: 'region' }),
+  'zh-CN':
+    typeof Intl.DisplayNames === 'function'
+      ? new Intl.DisplayNames(['zh-CN'], { type: 'region' })
+      : null,
+  'en-US':
+    typeof Intl.DisplayNames === 'function'
+      ? new Intl.DisplayNames(['en-US'], { type: 'region' })
+      : null,
 }
 
 export const getRegionName = (code: string, locale: 'zh-CN' | 'en-US'): string =>
   regions.has(code)
-    ? (regionNameOverrides[locale][code] ?? regionNames[locale].of(code) ?? code)
+    ? (regionNameOverrides[locale][code] ?? regionNames[locale]?.of(code) ?? code)
     : ''
 
 export const normalizeLocation = (value: unknown): UserLocation | null => {

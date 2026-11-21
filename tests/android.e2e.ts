@@ -3,6 +3,13 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { unzipSync } from 'fflate'
 
+const localPolicy = (
+  await readFile('android/src/com/chatdemo/deepseek/android/MainActivity.java', 'utf8')
+).match(/headers\.put\("Content-Security-Policy", "([^"]+)"\)/)?.[1]
+if (!localPolicy) {
+  throw new Error('Android content policy is missing')
+}
+
 type Harness = {
   requests: {
     url: string
@@ -41,6 +48,7 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({
         body: await readFile(filename),
         contentType: types[path.extname(filename)] || 'application/octet-stream',
+        headers: { 'Content-Security-Policy': localPolicy, 'X-Content-Type-Options': 'nosniff' },
       })
     } catch {
       await route.fulfill({ status: 404, body: '' })
@@ -257,6 +265,64 @@ test('stopping a streaming Android reply cancels the native network request', as
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await page.getByRole('button', { name: '停止生成', exact: true }).click()
   await expect.poll(() => page.evaluate(() => window.AndroidTest.cancelled.length)).toBe(1)
+})
+
+test('older WebView APIs still allow startup and native chat', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Intl, 'DisplayNames', { value: undefined, configurable: true })
+    Object.defineProperty(Object, 'hasOwn', { value: undefined, configurable: true })
+    for (const name of ['at', 'toSorted', 'toReversed']) {
+      Object.defineProperty(Array.prototype, name, { value: undefined, configurable: true })
+    }
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })
+    const media = Object.getPrototypeOf(window.matchMedia('(min-width: 0px)'))
+    Object.defineProperty(media, 'addEventListener', { value: undefined, configurable: true })
+    Object.defineProperty(media, 'removeEventListener', { value: undefined, configurable: true })
+  })
+  await page.reload()
+  await expect(page.locator('textarea')).toBeVisible()
+  await page.locator('textarea').fill('旧内核兼容验证')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+})
+
+test('WebView without dynamic viewport units keeps a full-height chat page', async ({ page }) => {
+  await page.route('https://appassets.androidplatform.net/static/css/**', async (route) => {
+    const filename = path.join(process.cwd(), 'dist', new URL(route.request().url()).pathname)
+    const css = (await readFile(filename, 'utf8')).replaceAll('dvh', 'unsupportedvh')
+    await route.fulfill({ body: css, contentType: 'text/css' })
+  })
+  await page.reload()
+  await expect
+    .poll(() => page.locator('main').evaluate((element) => element.getBoundingClientRect().height))
+    .toBeGreaterThan(500)
+  await expect(page.locator('textarea')).toBeVisible()
+})
+
+test('a failed startup script shows details and can reload without clearing settings', async ({
+  page,
+}) => {
+  let failNext = true
+  await page.route('https://appassets.androidplatform.net/static/js/main.*.js', async (route) => {
+    if (!failNext) {
+      await route.fallback()
+      return
+    }
+    failNext = false
+    await route.fulfill({
+      body: "throw new Error('startup-test failure')",
+      contentType: 'text/javascript',
+    })
+  })
+  await page.reload()
+  await expect(page.getByText('页面未能启动', { exact: true })).toBeVisible()
+  await expect(page.locator('#startup-detail')).toContainText('startup-test failure')
+  await page.screenshot({ path: 'test-results/android-startup-error.png' })
+  await page.getByRole('button', { name: '重新加载', exact: true }).click()
+  await expect(page.locator('textarea')).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('chat-demo:api-key'))).toBe(
+    'sk-android-test-only'
+  )
 })
 
 test('custom Base URL is verified with the saved key and persists for chat and uploads', async ({

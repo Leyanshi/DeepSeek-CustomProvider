@@ -6,7 +6,9 @@
 
 ## 安装
 
-将 `release/DeepSeek-Android-0.1.6.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，系统 WebView 需要支持 Chromium 105 及以上的网页能力。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 4，可覆盖安装 0.1.3、0.1.4 或 0.1.5 并保留原有数据。
+将 `release/DeepSeek-Android-0.1.7.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，推荐较新的系统 WebView；已加入旧内核启动 API 和视口高度的兼容处理。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 5，可覆盖安装 0.1.3–0.1.6 并保留原有数据。
+
+0.1.7 修复旧 WebView 缺少 `Intl.DisplayNames`、媒体查询事件 API 及现代数组方法时的启动失败，并为不支持 `dvh` 的内核提供实际可用的页面高度。启动脚本、资源或渲染失败时显示错误详情和「重新加载」，不会清除聊天记录。若仍无法启动，可反馈页面显示的内核版本和错误详情。
 
 首次打开，在「设置 → 数据管理」中填写 Base URL 和 API Key，点击「确定」验证后保存。默认 Base URL 为 `https://api.deepseek.com`；可在 [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) 获取 Key。只修改 Base URL 时可以沿用已保存的 Key，验证失败会保留原配置。联网聊天按服务提供方的规则计费，界面资源在本机加载。
 
@@ -50,7 +52,7 @@ corepack pnpm test:models
 corepack pnpm test:android
 ```
 
-界面和桥接测试用电脑已有的 Edge 在手机尺寸下运行，模拟 Android 原生 API，不需要真实 API Key，不产生调用费用，也不安装测试浏览器或模拟器。覆盖流式聊天、取消请求、二进制附件、ZIP 导出、主题、外部链接、Base URL 验证与恢复默认、使用待保存连接获取模型、模型选择及持久化、自定义 ID、重新生成和续写的请求模型、列表为空或失败时的重试。模型解析测试检查列表格式、名称、重复条目和 ID 校验；Base URL 测试同时检查前端和 Android 原生的 URL 拼接及接口边界。打包脚本自动验证 APK 签名、文件对齐与 Android 清单。
+界面和桥接测试用电脑已有的 Edge 在手机尺寸下运行，模拟 Android 原生 API，并使用 Android 壳相同的内容安全策略。不需要真实 API Key，不产生调用费用，也不安装测试浏览器或模拟器。10 项测试覆盖流式聊天、取消请求、二进制附件、ZIP 导出、主题、外部链接、Base URL 验证与恢复默认、模型选择及持久化、自定义 ID、重新生成与续写、列表重试，以及旧 API 缺失、缺少 `dvh` 支持、启动失败后显示详情与重试。模型解析测试检查列表格式、名称、重复条目和 ID 校验；Base URL 测试同时检查前端和 Android 原生的 URL 拼接及接口边界。打包脚本自动验证 APK 签名、文件对齐与 Android 清单。
 
 这些检查不代替 Android 真机验收。目前没有进行真机上的系统文件窗口、麦克风和键盘适配测试。
 

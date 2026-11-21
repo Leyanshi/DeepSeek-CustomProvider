@@ -10,7 +10,7 @@
 
 [下载 Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [安装与构建详细说明](ANDROID.md)
 
-支持 Android 8.0 及以上，系统 WebView 需要支持 Chromium 105 及以上的网页能力，不依赖 Google Play 服务。手机上显示的应用名称为 **DeepSeek**。这是社区客户端，并非 DeepSeek 官方应用。
+支持 Android 8.0 及以上，推荐较新的系统 WebView，不依赖 Google Play 服务。v0.1.7 已加入旧内核启动 API 和视口高度兼容；启动失败时会显示错误详情和重试按钮。手机上显示的应用名称为 **DeepSeek**。这是社区客户端，并非 DeepSeek 官方应用。
 
 1. 从 Releases 下载 APK，传到手机安装。
 2. 打开「设置 → 数据管理」，填写 API Key 和 HTTPS Base URL，点击「确定」保存。

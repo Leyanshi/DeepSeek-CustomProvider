@@ -5,8 +5,27 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#ffffff" />
     <title>DeepSeek</title>
+    <script defer src="./static/startup.js"></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        id="startup-state"
+        role="status"
+        style="
+          padding: 28px;
+          color: #222;
+          background: #fff;
+          font: 16px/1.6 sans-serif;
+          min-height: 100vh;
+          box-sizing: border-box;
+        "
+      >
+        <h2 id="startup-title">正在启动 DeepSeek…</h2>
+        <pre id="startup-detail" style="white-space: pre-wrap; overflow-wrap: anywhere"></pre>
+        <p id="startup-help">界面正在本机加载。</p>
+        <button id="startup-retry" type="button" hidden style="padding: 12px 20px">重新加载</button>
+      </div>
+    </div>
   </body>
 </html>

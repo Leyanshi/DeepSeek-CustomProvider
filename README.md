@@ -10,7 +10,7 @@ A lightweight Android chat app based on [deepseek-ai/chat-demo](https://github.c
 
 [Download the Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [Android build and usage guide](ANDROID.md)
 
-Requires Android 8.0 or later and a system WebView supporting Chromium 105 or later. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
+Requires Android 8.0 or later. A recent system WebView is recommended; v0.1.7 adds fallbacks for older startup APIs and viewport units, with visible errors and a reload button if startup fails. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
 
 1. Install the APK from Releases.
 2. Open **Settings → Data**, enter an API Key and an HTTPS Base URL, then confirm to save.

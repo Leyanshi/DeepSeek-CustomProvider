@@ -2,9 +2,26 @@
 
 [English](README.md) | 简体中文
 
-基于 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 的轻量 Android 聊天客户端，可自定义 **API Key、Base URL 和模型**。复用系统 WebView，通过原生 HTTPS 桥接访问 API，APK 约 **1.92 MB**，无需 Android Studio、Gradle 或模拟器。
+轻量 Android 聊天客户端，可自定义 **API Key、Base URL 和模型**。复用系统 WebView，通过原生 HTTPS 桥接访问 API，APK 约 **2 MB**，无需 Android Studio、Gradle 或模拟器。
 
 <img src="resources/deepseek-app-icon.svg" width="88" height="88" alt="DeepSeek 应用图标" />
+
+## ❤️ 赞助商
+
+> [想出现在这里？](mailto:support@sub2api.org)
+
+<details open>
+<summary>点击折叠</summary>
+
+<table>
+<tr>
+<td width="180"><a href="https://zynk.top/sign-up?aff=DSCP"><img src="https://topup.leyanshi.me/logo.jpg" alt="Zynk API" width="150"></a></td>
+<td>感谢 Zynk API 赞助了本项目！<a href="https://zynk.top/sign-up?aff=DSCP">Zynk API</a> 是一个专注于速度与性价比的 AI API 网关平台，提供 Claude、OpenAI、Gemini、Kimi 等主流模型的 API 接入。<a href="https://zynk.top/sign-up?aff=DSCP">点此</a>以远低于官方 API 的价格使用快、稳、省的服务。</td>
+</tr>
+
+</table>
+
+</details>
 
 ## 下载与使用
 

@@ -41,6 +41,7 @@ import android.widget.Button;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -93,6 +94,11 @@ public final class MainActivity extends Activity {
     private PermissionRequest microphoneRequest;
     private String savingId;
     private volatile boolean destroyed;
+    private volatile HttpURLConnection updateConnection;
+    private ReleaseUpdate pendingUpdate;
+    private AlertDialog updateDialog;
+    private boolean resumed;
+    private boolean checkingUpdates;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -146,9 +152,108 @@ public final class MainActivity extends Activity {
         createStartupPanel();
         beginStartup();
         webView.loadUrl(ORIGIN + "/index.html");
+        checkForUpdate();
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private void checkForUpdate() {
+        if (destroyed || checkingUpdates) { return; }
+        String installed;
+        try { installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (Exception ignored) { return; }
+        pendingUpdate = null;
+        if (updateDialog != null) {
+            AlertDialog previous = updateDialog;
+            updateDialog = null;
+            previous.dismiss();
+        }
+        checkingUpdates = true;
+        final String current = installed;
+        workers.execute(() -> {
+            ReleaseUpdate update = ReleaseUpdate.check(current, () -> {
+                if (destroyed) { return null; }
+                HttpURLConnection connection = (HttpURLConnection) new URL(ReleaseUpdate.API_URL).openConnection();
+                updateConnection = connection;
+                try {
+                    if (destroyed) { return null; }
+                    connection.setRequestMethod("GET");
+                    connection.setInstanceFollowRedirects(false);
+                    connection.setConnectTimeout(8000);
+                    connection.setReadTimeout(8000);
+                    connection.setUseCaches(false);
+                    connection.setRequestProperty("Accept", "application/vnd.github+json");
+                    connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+                    connection.setRequestProperty("User-Agent", "DeepSeek-CustomProvider/" + current);
+                    if (connection.getResponseCode() != 200) { return null; }
+                    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                    try (InputStream stream = connection.getInputStream()) {
+                        byte[] buffer = new byte[8192];
+                        int length;
+                        while ((length = stream.read(buffer)) != -1) {
+                            if (destroyed) { return null; }
+                            bytes.write(buffer, 0, length);
+                        }
+                    }
+                    JSONObject release = new JSONObject(new String(bytes.toByteArray(), StandardCharsets.UTF_8));
+                    return new ReleaseUpdate.Latest(release.getString("tag_name"), release.optString("body", ""),
+                        release.optBoolean("draft", false), release.optBoolean("prerelease", false));
+                } finally {
+                    connection.disconnect();
+                    updateConnection = null;
+                }
+            });
+            ui.post(() -> {
+                checkingUpdates = false;
+                if (destroyed) { return; }
+                pendingUpdate = update;
+                showPendingUpdate();
+            });
+        });
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) { checkForUpdate(); }
+    }
+
+    private void showPendingUpdate() {
+        if (destroyed || isFinishing() || !resumed || (!startupReady && startupFailureReason.isEmpty()) || pendingUpdate == null || updateDialog != null) { return; }
+        ReleaseUpdate update = pendingUpdate;
+        pendingUpdate = null;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(true);
+        TextView notes = new TextView(this);
+        notes.setText(update.notes.isEmpty() ? "此版本暂无更新日志。" : update.notes);
+        notes.setTextSize(14);
+        notes.setTextColor(Color.DKGRAY);
+        notes.setBackgroundColor(Color.WHITE);
+        notes.setTextIsSelectable(true);
+        notes.setPadding(dp(24), dp(16), dp(24), dp(16));
+        scroll.addView(notes, new ScrollView.LayoutParams(-1, -2));
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, Math.max(dp(80), (int) (getResources().getDisplayMetrics().heightPixels * 0.55f))));
+        updateDialog = new AlertDialog.Builder(this).setTitle("更新版本： " + update.version).setView(content)
+            .setPositiveButton("打开 Release", (dialog, button) -> openExternal(update.url))
+            .setNegativeButton("暂不更新", null).create();
+        updateDialog.setOnDismissListener(dialog -> {
+            if (updateDialog == dialog) { updateDialog = null; showPendingUpdate(); }
+        });
+        updateDialog.show();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        resumed = true;
+        showPendingUpdate();
+    }
+
+    @Override protected void onPause() {
+        resumed = false;
+        super.onPause();
+    }
 
     private void createStartupPanel() {
         startupPanel = new ScrollView(this);
@@ -222,6 +327,7 @@ public final class MainActivity extends Activity {
         startupDetail.setVisibility(View.VISIBLE);
         startupActions.setVisibility(View.VISIBLE);
         probeStartupPage();
+        showPendingUpdate();
     }
 
     private void probeStartupPage() {
@@ -521,6 +627,9 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        HttpURLConnection update = updateConnection;
+        if (update != null) { update.disconnect(); }
+        if (updateDialog != null) { updateDialog.dismiss(); }
         ui.removeCallbacks(startupTimeout);
         for (NetworkJob job : requests.values()) { job.cancel(); }
         for (FileJob job : files.values()) { job.close(); job.file.delete(); }
@@ -559,6 +668,7 @@ public final class MainActivity extends Activity {
                 startupReady = true;
                 ui.removeCallbacks(startupTimeout);
                 container.removeView(startupPanel);
+                showPendingUpdate();
             });
         }
         @JavascriptInterface public void startupFailed(String message) {

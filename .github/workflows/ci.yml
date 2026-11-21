@@ -50,5 +50,8 @@ jobs:
       - name: Test Android asset packaging
         run: pnpm test:android-assets
 
+      - name: Test Android release update checks
+        run: pnpm test:android-updates
+
       - name: Build web app
         run: pnpm build

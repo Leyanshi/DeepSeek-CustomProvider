@@ -28,13 +28,15 @@ A lightweight Android chat app. Configure your own **API Key, Base URL and model
 
 [Download the Android APK](https://github.com/Leyanshi/DeepSeek-CustomProvider/releases/latest) · [Android build and usage guide](ANDROID.md)
 
-Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.9 fixes Windows separators in APK asset paths that prevented Android from loading the scripts, and verifies every bundled web file after signing. The loading screen shows a centered DeepSeek logo and a gray “加载中” label. A native 15-second timer displays diagnostics if startup does not finish; copying checks the clipboard and opens a native report dialog, with TXT export available. Older startup API and viewport fallbacks are retained. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
+Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.10 checks GitHub's latest stable Release at startup. A newer version opens a dialog titled “更新版本： {version}” with complete, scrollable release notes and an **打开 Release** button. Failed checks are silent. The loading screen shows a centered DeepSeek logo and a gray “加载中” label, with native diagnostics and TXT export if startup fails. APK asset paths and every bundled web file are verified after signing. Google Play services are not required. The app is named **DeepSeek** on the device. This is a community client, not an official DeepSeek app.
 
 1. Install the APK from Releases.
 2. Open **Settings → Data**, enter an API Key and an HTTPS Base URL, then confirm to save.
 3. Under **Chat model**, fetch the model list and select a model, or enter a custom model ID. Confirm to save.
 
 New messages and regenerated replies use the selected model. Continuation uses the original reply's model. Connection settings and model selection persist across restarts. Released updates keep the same signing certificate, so you can install them over an earlier release to retain local data.
+
+Update checks run in the background using Android's native networking. Versions are compared numerically; equal or older releases, drafts and prereleases are ignored. Offline, timeout, rate-limit and invalid-response failures produce no dialog or toast. Dismissing a newer version keeps checks enabled for the next startup; download and install the APK from the linked Release page to update.
 
 If startup remains on the loading screen, wait 15 seconds and choose **查看 / 导出诊断 → 导出 TXT**. Attach the saved `DeepSeek-startup-diagnostic.txt` or a screenshot of the native diagnostic dialog to a bug report if pasting copied text remains empty. The report includes app and Android versions, device model, WebView version, startup stages and any captured errors. Retry keeps your local history. The reported device's startup and clipboard causes have not yet been confirmed.
 
@@ -77,6 +79,7 @@ Each fresh checkout generates its own local signing key in `android/.signing/`. 
 - Custom API Key and HTTPS Base URL, with service roots, ports, path prefixes and `/v1` supported.
 - Fetch models using the entered connection; select a returned model or enter an unlisted custom model ID.
 - Bundled UI and DeepSeek SVG branding, a white rounded launcher icon, and the native Android HTTPS bridge.
+- Startup checks for newer GitHub Releases, complete scrollable release notes and a link to the release page.
 - Multiple conversations with automatic titles, renaming, and deletion; edit prompts, regenerate replies, and switch between message branches.
 - Streaming replies, deep thinking, smart search, link reading, and source citations; stop generation or continue eligible replies.
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
@@ -93,20 +96,21 @@ Settings → Data → Delete all chats clears all local conversations, original 
 
 ## Development
 
-| Command                    | Description                             |
-| -------------------------- | --------------------------------------- |
-| `pnpm dev`                 | Start the development server            |
-| `pnpm build`               | Build the web app into `dist/`          |
-| `pnpm pack:android`        | Build and sign the Android APK          |
-| `pnpm type`                | Run TypeScript type checks              |
-| `pnpm lint`                | Lint with oxlint                        |
-| `pnpm test:models`         | Test model catalogs and custom IDs      |
-| `pnpm test:base-url`       | Test frontend and native URL handling   |
-| `pnpm test:android-assets` | Test Android ZIP paths and web assets   |
-| `pnpm test:android`        | Test mobile UI and the simulated bridge |
-| `pnpm format`              | Format with oxfmt                       |
+| Command                     | Description                                  |
+| --------------------------- | -------------------------------------------- |
+| `pnpm dev`                  | Start the development server                 |
+| `pnpm build`                | Build the web app into `dist/`               |
+| `pnpm pack:android`         | Build and sign the Android APK               |
+| `pnpm type`                 | Run TypeScript type checks                   |
+| `pnpm lint`                 | Lint with oxlint                             |
+| `pnpm test:models`          | Test model catalogs and custom IDs           |
+| `pnpm test:base-url`        | Test frontend and native URL handling        |
+| `pnpm test:android-assets`  | Test Android ZIP paths and web assets        |
+| `pnpm test:android-updates` | Test release comparisons and silent failures |
+| `pnpm test:android`         | Test mobile UI and the simulated bridge      |
+| `pnpm format`               | Format with oxfmt                            |
 
-CI checks types, lint, model parsing, frontend/native URL handling, Android asset packaging and the web build. The 12 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including loading, readiness and early startup errors; they do not need an emulator or a real API Key. Five packaging tests cover ZIP paths, collisions, missing files and stale contents. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing, including the native startup timer, clipboard and TXT export, has not yet been performed.
+CI checks types, lint, model parsing, frontend/native URL handling, Android asset packaging, release update logic and the web build. The 12 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge; they do not need an emulator or a real API Key. Five packaging tests cover ZIP paths and missing or stale files; 22 JDK checks cover release comparisons, silent failures and long Unicode notes. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing, including the update dialog, native startup timer, clipboard and TXT export, has not yet been performed.
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 

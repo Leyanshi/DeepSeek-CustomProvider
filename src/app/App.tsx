@@ -24,7 +24,7 @@ import { Button } from '../components/base/Button.js'
 import { stopReadAloud } from '../services/speech/readAloud.js'
 import { CollapsedSider } from '../components/sider/CollapsedSider.js'
 import { closeMobileSider } from '../components/sider/mobileSiderState.js'
-import { MobileSider, Sider } from '../components/sider/Sider.js'
+import { DesktopSider, MobileSider } from '../components/sider/Sider.js'
 import styles from './App.module.css'
 
 export const App = () => {
@@ -81,7 +81,7 @@ export const App = () => {
   return (
     <>
       <div ref={frameRef} className={styles.frame}>
-        {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
+        {isMobile ? <MobileSider /> : <DesktopSider collapsed={siderCollapsed} />}
         <main className={styles.main}>
           {saveError ? (
             <div className={styles.saveError} role="alert">

@@ -466,6 +466,90 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 })
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 844, height: 390 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 1366 },
+  { width: 1366, height: 1024 },
+]) {
+  test(`sidebar moves through intermediate positions at ${viewport.width}px and remains usable`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.setViewportSize(viewport)
+    const wide = viewport.width >= 768
+    const panel = page.locator(`[data-sider-layout="${wide ? 'docked' : 'drawer'}"]`)
+    if (wide) {
+      await page.getByRole('button', { name: '收起边栏', exact: true }).click()
+    }
+    await expect
+      .poll(() =>
+        panel.evaluate((element, wide) => {
+          const rect = element.getBoundingClientRect()
+          return Math.round(wide ? rect.width : rect.right)
+        }, wide)
+      )
+      .toBe(0)
+
+    const move = (open: boolean) =>
+      page.evaluate(
+        async ({ wide, open }) => {
+          const element = document.querySelector(
+            `[data-sider-layout="${wide ? 'docked' : 'drawer'}"]`
+          )
+          const main = document.querySelector('main')
+          const button = document.querySelector<HTMLButtonElement>(
+            `button[aria-label="${open ? '打开边栏' : '收起边栏'}"]`
+          )
+          if (!element || !main || !button) {
+            throw new Error('Sidebar controls missing')
+          }
+          const capture = () => {
+            const rect = element.getBoundingClientRect()
+            return { reveal: wide ? rect.width : rect.right, mainX: main.getBoundingClientRect().x }
+          }
+          const frames = [capture()]
+          button.click()
+          const start = performance.now()
+          do {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            frames.push(capture())
+          } while (performance.now() - start < 450)
+          return frames
+        },
+        { wide, open }
+      )
+
+    const width = wide ? 261 : 300
+    const opened = await move(true)
+    expect(opened[0].reveal).toBeCloseTo(0)
+    expect(opened.some((frame) => frame.reveal > 1 && frame.reveal < width - 1)).toBe(true)
+    expect(opened.at(-1)?.reveal).toBeCloseTo(width)
+    expect(opened.at(-1)?.mainX).toBeCloseTo(wide ? width : 0)
+    await page.screenshot({ path: `test-results/sidebar-${viewport.width}.png` })
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    const closed = await move(false)
+    expect(closed.some((frame) => frame.reveal > 1 && frame.reveal < width - 1)).toBe(true)
+    expect(closed.at(-1)?.reveal).toBeCloseTo(0)
+    await expect(page.locator('[data-android-back]')).toHaveCount(0)
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const reduced = await move(true)
+    expect(reduced.some((frame) => frame.reveal > 1 && frame.reveal < width - 1)).toBe(false)
+    expect(reduced.at(-1)?.reveal).toBeCloseTo(width)
+    await move(false)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    if (wide) {
+      await page.reload()
+      await expect(page.getByRole('button', { name: '打开边栏', exact: true })).toBeVisible()
+    }
+    await page.locator('textarea').fill('侧栏动画后仍能发送消息')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  })
+}
+
 test('Android mobile chat, binary upload, export, theme and browser links', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.AndroidTest.readyCalls)).toBe(1)
   const errors: string[] = []

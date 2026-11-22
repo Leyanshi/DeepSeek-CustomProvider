@@ -14,6 +14,9 @@ declare const styles: {
   readonly "settingsLabel": string;
   readonly "collapsed": string;
   readonly "collapsedGroup": string;
+  readonly "docked": string;
+  readonly "dockedOpen": string;
+  readonly "dockedContent": string;
   readonly "drawer": string;
   readonly "drawerOpen": string;
   readonly "drawerMask": string;

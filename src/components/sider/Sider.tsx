@@ -147,9 +147,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   )
 }
 
-/** 保留抽屉外层以播放进出过渡，退出结束后卸载会话列表。 */
-export const MobileSider = () => {
-  const open = useMobileSider((state) => state.open)
+/** Both layouts keep their content until the closing transition completes. */
+const useSiderContent = (open: boolean) => {
   const [rendered, setRendered] = useState(open)
   useEffect(() => {
     if (open) {
@@ -160,6 +159,27 @@ export const MobileSider = () => {
     const timer = setTimeout(() => setRendered(false), 300)
     return () => clearTimeout(timer)
   }, [open])
+  return open || rendered
+}
+
+/** 宽屏侧栏始终保留外层，收起时让会话内容和主区域一起平滑移动。 */
+export const DesktopSider = ({ collapsed }: { collapsed: boolean }) => {
+  const rendered = useSiderContent(!collapsed)
+  return (
+    <div
+      data-sider-layout="docked"
+      aria-hidden={collapsed}
+      className={clsx(styles.docked, !collapsed && styles.dockedOpen)}
+    >
+      <div className={styles.dockedContent}>{rendered ? <Sider /> : null}</div>
+    </div>
+  )
+}
+
+/** 保留抽屉外层以播放进出过渡，退出结束后卸载会话列表。 */
+export const MobileSider = () => {
+  const open = useMobileSider((state) => state.open)
+  const rendered = useSiderContent(open)
   return (
     <>
       <div
@@ -168,8 +188,12 @@ export const MobileSider = () => {
         className={clsx(styles.drawerMask, open && styles.drawerOpen)}
         onClick={closeMobileSider}
       />
-      <div aria-hidden={!open} className={clsx(styles.drawer, open && styles.drawerOpen)}>
-        {open || rendered ? <Sider mobile /> : null}
+      <div
+        data-sider-layout="drawer"
+        aria-hidden={!open}
+        className={clsx(styles.drawer, open && styles.drawerOpen)}
+      >
+        {rendered ? <Sider mobile /> : null}
       </div>
     </>
   )

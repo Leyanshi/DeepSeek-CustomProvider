@@ -35,6 +35,8 @@ Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.10 c
 3. Under **Chat model**, fetch the model list and select a model, or enter a custom model ID. Confirm to save.
 4. In **Web & speech**, configure independent Search/Fetch and speech services, or follow the chat connection. OpenAI compatible speech supports custom TTS/transcription models and voice IDs.
 
+v0.1.12 adds **GrokSearch-rs (MCP)** under **Web & speech → Web API source**. It calls `web_search` and `web_fetch` over remote Streamable HTTP, preserving the Grok summary, citations and fetched Markdown in chat context and history. The default full endpoint is `https://mcp.episkeyai.com/groksearch_rs/mcp`, as documented by [GrokSearch-rs](https://github.com/Episkey-G/GrokSearch-rs); you can use a self-hosted HTTPS endpoint. Enter a Grok API Key, optionally its matching gateway URL and search model ID, and source keys for page reading. A blank Grok gateway uses the server default (normally xAI), and a blank model uses its default model. General pages need a configured Tavily, Exa, TinyFish or Firecrawl source; GitHub, Wikipedia, arXiv and other specialist readers can work without source keys. These keys are sent to your configured MCP service for upstream calls, independently of the chat credentials. Android needs no Rust server or extra SDK. DeepSeek remains the default for existing installations, and switching providers retains their saved configurations.
+
 v0.1.11 sends images directly in Messages requests, calls DeepSeek Search/Fetch and includes retrieved sources in the model context, and fixes PCM/WAV/MP3 playback and configurable speech input. Unsupported thinking parameters are omitted after explicit model metadata or API rejection. Capabilities are isolated by URL/model; changing the API Key clears old observations and rejects late cache writes from the previous connection. A manual recheck is available under Data.
 
 New messages and regenerated replies use the selected model. Continuation uses the original reply's model. Connection settings and model selection persist across restarts. Released updates keep the same signing certificate, so you can install them over an earlier release to retain local data.
@@ -85,6 +87,7 @@ Each fresh checkout generates its own local signing key in `android/.signing/`. 
 - Startup checks for newer GitHub Releases, complete scrollable release notes and a link to the release page.
 - Multiple conversations with automatic titles, renaming, and deletion; edit prompts, regenerate replies, and switch between message branches.
 - Streaming replies, deep thinking, smart search, link reading, and source citations; stop generation or continue eligible replies.
+- Select DeepSeek Search/Fetch or GrokSearch-rs remote MCP, with independent gateway, model and source keys.
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import and export.
@@ -107,17 +110,18 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | `pnpm type`                 | Run TypeScript type checks                   |
 | `pnpm lint`                 | Lint with oxlint                             |
 | `pnpm test:models`          | Test model catalogs and custom IDs           |
+| `pnpm test:grok-search`     | Test GrokSearch MCP envelopes and outputs    |
 | `pnpm test:base-url`        | Test frontend and native URL handling        |
 | `pnpm test:android-assets`  | Test Android ZIP paths and web assets        |
 | `pnpm test:android-updates` | Test release comparisons and silent failures |
 | `pnpm test:android`         | Test mobile UI and the simulated bridge      |
 | `pnpm format`               | Format with oxfmt                            |
 
-CI checks types, lint, model parsing, frontend/native URL handling, Android asset packaging, release update logic and the web build. The 24 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including fake microphone input. They cover image history, Search/Fetch, configurable speech, PCM/WAV playback, and thinking detection across model/key changes, alongside startup and chat regressions. Five packaging tests cover ZIP paths and missing or stale files; 22 JDK checks cover release comparisons, silent failures and long Unicode notes. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing, including actual microphone/speaker behavior and the update dialog, has not yet been performed.
+CI checks types, lint, model and GrokSearch parsing, frontend/native URL handling, Android asset packaging, release update logic and the web build. The 32 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including fake microphone input. They cover image history, Search/Fetch, configurable speech, PCM/WAV playback, and thinking detection across model/key changes, alongside startup and chat regressions. GrokSearch checks include JSON/SSE, MCP initialization and sessions, independent keys, provider switching, history, errors and cancellation; six protocol tests cover envelopes and source output. Five packaging tests cover ZIP paths and missing or stale files; 22 JDK checks cover release comparisons, silent failures and long Unicode notes. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing and live Grok calls with real credentials have not yet been performed.
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 
-Chat uses `deepseek-flash` by default through **Anthropic-compatible Messages**. The selected service must support that protocol and model; changing Base URL or model does not convert chat to OpenAI Chat Completions. Images use inline Base64 and assume multimodal support; documents require Files API. Search/Fetch can use an independent DeepSeek compatible service; speech supports DeepSeek and OpenAI compatible APIs, including independent models and voices. Chat retains title, safety and `latest_reminder` extensions. Actual model and attachment support is determined by the provider.
+Chat uses `deepseek-flash` by default through **Anthropic-compatible Messages**. The selected service must support that protocol and model; changing Base URL or model does not convert chat to OpenAI Chat Completions. Images use inline Base64 and assume multimodal support; documents require Files API. Search/Fetch can use an independent DeepSeek compatible service or GrokSearch-rs remote MCP; speech supports DeepSeek and OpenAI compatible APIs, including independent models and voices. Chat retains title, safety and `latest_reminder` extensions. Actual model and attachment support is determined by the provider.
 
 ```text
 src/

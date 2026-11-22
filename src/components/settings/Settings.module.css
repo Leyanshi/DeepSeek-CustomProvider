@@ -90,6 +90,10 @@
   min-height: 44px;
 }
 
+.serviceField {
+  margin: 12px 0;
+}
+
 .serviceActions {
   display: flex;
   flex-wrap: wrap;

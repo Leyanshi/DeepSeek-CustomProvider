@@ -34,6 +34,8 @@
 3. 在「聊天模型」中获取模型列表并选择，或手动填写自定义模型 ID，再点击「确定」。
 4. 在「联网与语音」中设置 Search/Fetch 和语音服务，可跟随聊天连接或使用独立服务；OpenAI 兼容语音可自定义 TTS 模型、识别模型和音色 ID。
 
+v0.1.12 在「联网与语音 → 联网 API 来源」新增 **GrokSearch-rs (MCP)**。通过远程 Streamable HTTP 调用 `web_search` 和 `web_fetch`，将 Grok 整理摘要、来源链接和抓取的 Markdown 保留到聊天上下文与历史中。默认完整地址为 [GrokSearch-rs](https://github.com/Episkey-G/GrokSearch-rs) 公布的 `https://mcp.episkeyai.com/groksearch_rs/mcp`，也可填写自建 HTTPS MCP 地址。填写 Grok API Key，可选填与 Key 配套的 Grok 网关和搜索模型 ID；网关留空使用服务默认地址（通常为 xAI），模型留空使用服务默认模型。普通网页读取需要 Tavily、Exa、TinyFish 或 Firecrawl 来源 Key；GitHub、Wikipedia、arXiv 等专用读取器可免来源 Key。这些 Key 会提交给所填 MCP 服务，由它调用上游，不会自动沿用聊天 Key。手机无需安装 Rust 服务或额外 SDK。旧用户仍默认使用 DeepSeek，切换来源保留各自已保存的配置。
+
 v0.1.11 支持图片直接放进聊天请求，实际调用 DeepSeek Search/Fetch 并将资料交给模型，修复 PCM/WAV/MP3 朗读和可配置的语音输入。模型声明或接口明确拒绝思考设置时，会自动省略不支持的参数。判断按地址与模型隔离，更换 Key 会清除旧判断并阻止旧请求迟到后重新写入；「数据管理」也提供手动重新检测入口。
 
 新消息、编辑提问和重新生成使用当前所选模型，继续生成沿用原回答的模型。连接配置和模型会保留到下次启动。正式发布版本使用同一签名，可以覆盖安装旧版并保留本机数据。
@@ -84,6 +86,7 @@ corepack pnpm pack:android
 - 启动检查 GitHub 新版，显示完整可滚动更新日志，可跳转对应 Release 页面。
 - 多会话、自动标题、重命名与删除；编辑提问、重新生成和切换消息分支。
 - 流式回答、深度思考、智能搜索、链接阅读与来源引用；支持停止和符合条件的继续生成。
+- 联网来源可选 DeepSeek Search/Fetch 或 GrokSearch-rs 远程 MCP，独立配置网关、模型和网页来源 Key。
 - 附件上传、粘贴与拖拽，语音输入和回复朗读；移动端录音时输入框首行显示实时频谱。
 - Markdown、代码高亮、KaTeX 公式和 Mermaid 图表。
 - 简体中文与英文、浅色与深色主题、移动端布局、位置设置、历史导入导出。
@@ -106,17 +109,18 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm type`                 | TypeScript 类型检查          |
 | `pnpm lint`                 | oxlint 检查                  |
 | `pnpm test:models`          | 模型列表解析与自定义 ID 测试 |
+| `pnpm test:grok-search`     | GrokSearch MCP 响应与来源测试 |
 | `pnpm test:base-url`        | 前端与原生 URL 测试          |
 | `pnpm test:android-assets`  | Android ZIP 路径与资源测试   |
 | `pnpm test:android-updates` | 版本更新比较与静默失败测试   |
 | `pnpm test:android`         | 手机尺寸界面与桥接测试       |
 | `pnpm format`               | oxfmt 格式化                 |
 
-CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试、Android 资源打包、更新逻辑测试及网页构建。24 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸、Android 桥接和麦克风输入，覆盖图片历史、Search/Fetch、语音配置与 PCM/WAV 播放、换模型/Key 后思考重新检测等场景，不安装模拟器或测试浏览器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径和缺失或过期资源；22 项 JDK 检查覆盖更新版本比较、静默失败和长中文日志。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试，包括真实麦克风/扬声器与更新弹窗。
+CI 执行类型检查、代码检查、模型及 GrokSearch 解析、前端与原生 URL 测试、Android 资源打包、更新逻辑测试及网页构建。32 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸、Android 桥接和麦克风输入，覆盖图片历史、Search/Fetch、语音配置与 PCM/WAV 播放、换模型/Key 后思考重新检测等场景。GrokSearch 测试覆盖 JSON/SSE、MCP 初始化与会话、独立凭据、切换来源、历史、失败与取消；另有 6 项协议测试验证响应和来源输出。测试不安装模拟器或测试浏览器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径和缺失或过期资源；22 项 JDK 检查覆盖更新版本比较、静默失败和长中文日志。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试或使用真实 Key 的 Grok 联调。
 
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 
-聊天默认使用 `deepseek-flash`，通过 **Anthropic 兼容的 Messages API** 通信，接入服务需支持该协议及所选模型。更换地址或模型不会把聊天转换为 OpenAI Chat Completions。图片使用内联 Base64，默认按多模态模型发送；文档仍需 Files API。Search/Fetch 可使用独立的 DeepSeek 兼容服务；语音支持 DeepSeek/OpenAI 兼容格式和独立模型、音色配置。聊天保留标题、安全审核及 `latest_reminder` 扩展，模型和附件实际支持范围以服务端为准。
+聊天默认使用 `deepseek-flash`，通过 **Anthropic 兼容的 Messages API** 通信，接入服务需支持该协议及所选模型。更换地址或模型不会把聊天转换为 OpenAI Chat Completions。图片使用内联 Base64，默认按多模态模型发送；文档仍需 Files API。Search/Fetch 可使用独立的 DeepSeek 兼容服务或 GrokSearch-rs 远程 MCP；语音支持 DeepSeek/OpenAI 兼容格式和独立模型、音色配置。聊天保留标题、安全审核及 `latest_reminder` 扩展，模型和附件实际支持范围以服务端为准。
 
 <img src="docs/images/android-sidebar.png" width="260" alt="侧边栏 SVG 标识与 Android 界面预览" />
 

@@ -4,6 +4,9 @@ import { ApiError, request } from './client.js'
 import { resolveServiceConnection } from './serviceConnection.js'
 import type { ServerToolBlock, ServerToolUseBlock, WebSearchResult } from './types.js'
 import { webContextText } from './webContext.js'
+import { createGrokSearchClient } from './grokSearch.js'
+import { grokFetchOutput, grokSearchOutput } from './grokSearchProtocol.js'
+import type { ServiceConnection } from './serviceConnection.js'
 
 type SearchResult = WebSearchResult & { summary: string; content: string }
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -63,10 +66,9 @@ export const parseSearchResults = (body: unknown): SearchResult[] => {
 const webRequest = async (
   endpoint: string,
   body: unknown,
-  signal: AbortSignal
+  signal: AbortSignal,
+  connection: ServiceConnection
 ): Promise<unknown> => {
-  const settings = useSettings.getState()
-  const connection = resolveServiceConnection(settings.webService, settings)
   const controller = new AbortController()
   const abort = () => controller.abort(signal.reason)
   signal.throwIfAborted()
@@ -112,6 +114,11 @@ export const prepareWebContext = async (
   signal: AbortSignal,
   onBlocks: (blocks: ServerToolBlock[]) => void
 ): Promise<{ blocks: ServerToolBlock[]; context: string }> => {
+  const settings = useSettings.getState()
+  const connection = resolveServiceConnection(settings.webService, settings)
+  const grok =
+    settings.webProvider === 'grok' ? createGrokSearchClient(settings.grokSearch, signal) : null
+  let searchSummary = ''
   const blocks: ServerToolBlock[] = []
   const publish = () => onBlocks([...blocks])
   const pages = new Map<string, 'read_link' | 'deep_search'>()
@@ -122,13 +129,20 @@ export const prepareWebContext = async (
     }
   }
   if (search && question.trim()) {
-    const query = limit(question.trim(), 128)
+    const query = limit(question.trim(), grok ? 8000 : 128)
     const call = tool({ action: 'search', query, queries: [query] }, 'search')
     blocks.push(call)
     publish()
     try {
-      const results = parseSearchResults(
-        await webRequest(
+      let body: unknown
+      if (grok) {
+        const output = grokSearchOutput(
+          await grok.call('web_search', { query, response_format: 'concise' })
+        )
+        body = output
+        searchSummary = limit(output.summary, 24000)
+      } else {
+        body = await webRequest(
           '/v1/tools/search',
           {
             query,
@@ -136,16 +150,18 @@ export const prepareWebContext = async (
             ori_question: query,
             need_content: false,
           },
-          signal
+          signal,
+          connection
         )
-      )
+      }
+      const results = parseSearchResults(body)
       blocks.push({
         type: 'web_search_tool_result',
         tool_use_id: call.id,
         kind: 'search',
         content: results,
       })
-      if (useSettings.getState().webFetch) {
+      if (settings.webFetch) {
         for (const result of results.slice(0, 2)) {
           if (!pages.has(result.url) && pages.size < 3) {
             pages.set(result.url, 'deep_search')
@@ -163,14 +179,16 @@ export const prepareWebContext = async (
     }
     publish()
   }
-  if (useSettings.getState().webFetch) {
+  if (settings.webFetch) {
     await Promise.all(
       [...pages].map(async ([url, kind]) => {
         const call = tool({ action: kind === 'read_link' ? 'read_link' : 'open_page', url }, kind)
         blocks.push(call)
         publish()
         try {
-          const page = await webRequest('/v1/tools/fetch', { url }, signal)
+          const page = grok
+            ? grokFetchOutput(await grok.call('web_fetch', { url, max_chars: 24000 }), url)
+            : await webRequest('/v1/tools/fetch', { url }, signal, connection)
           if (!record(page) || typeof page.content !== 'string' || typeof page.title !== 'string') {
             throw new ApiError('protocol', 'Invalid Fetch API response')
           }
@@ -210,5 +228,5 @@ export const prepareWebContext = async (
     )
   }
   signal.throwIfAborted()
-  return { blocks, context: webContextText(blocks) }
+  return { blocks, context: webContextText(blocks, searchSummary) }
 }

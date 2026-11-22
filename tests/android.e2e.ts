@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { unzipSync } from 'fflate'
@@ -31,6 +31,13 @@ type Harness = {
   modelStatus: number
   webStatus: number
   fetchStatus: number
+  mcpFormat: 'json' | 'sse'
+  mcpStructured: boolean
+  mcpStatus: number
+  mcpError: 'none' | 'rpc' | 'tool' | 'malformed'
+  mcpDelay: number
+  mcpSession: string
+  mcpVersion: string
   audioStatus: number
   audioFormat: 'pcm' | 'wav'
   audioEndDelay: number
@@ -92,6 +99,13 @@ test.beforeEach(async ({ page }) => {
       modelStatus: 200,
       webStatus: 200,
       fetchStatus: 200,
+      mcpFormat: 'sse',
+      mcpStructured: true,
+      mcpStatus: 200,
+      mcpError: 'none',
+      mcpDelay: 0,
+      mcpSession: '',
+      mcpVersion: '2025-11-25',
       audioStatus: 200,
       audioFormat: 'pcm',
       audioEndDelay: 40,
@@ -137,6 +151,100 @@ test.beforeEach(async ({ page }) => {
             })
             data(id, JSON.stringify(harness.modelResponse))
             emit({ id, type: 'end' })
+          } else if (request.url.endsWith('/api/mcp')) {
+            const rpc = JSON.parse(
+              new TextDecoder().decode(Uint8Array.from(atob(request.body), (c) => c.charCodeAt(0)))
+            )
+            if (rpc.method === 'notifications/initialized') {
+              emit({
+                id,
+                type: 'headers',
+                status: 202,
+                headers: { 'content-type': 'application/json' },
+              })
+              emit({ id, type: 'end' })
+              return
+            }
+            setTimeout(() => {
+              if (harness.cancelled.includes(id)) {
+                return
+              }
+              let result: unknown
+              if (rpc.method === 'initialize') {
+                result = {
+                  protocolVersion: harness.mcpVersion,
+                  capabilities: { tools: {} },
+                  serverInfo: { name: 'grok-search-rs', version: '0.1.26' },
+                }
+              } else if (rpc.params.name === 'web_search') {
+                result = {
+                  content: 'Grok 整理摘要：最新发布已确认，来源如下。',
+                  sources: [
+                    {
+                      url: 'https://grok-news.example/article',
+                      title: 'Grok 联网资料',
+                      description: 'Grok 来源摘要',
+                      provider: 'grok',
+                      published_date: '2026-11-22',
+                    },
+                  ],
+                  session_id: 'search-session',
+                  sources_count: 1,
+                }
+              } else {
+                result = {
+                  url: rpc.params.arguments.url,
+                  content: '# Grok 网页正文\nGrok Fetch 返回的独立正文。',
+                  source_type: 'generic',
+                  original_length: 42,
+                  truncated: false,
+                }
+              }
+              const toolResult = {
+                ...(harness.mcpStructured ? { structuredContent: result } : {}),
+                content: [{ type: 'text', text: JSON.stringify(result) }],
+              }
+              const body =
+                rpc.method === 'initialize'
+                  ? { jsonrpc: '2.0', id: rpc.id, result }
+                  : harness.mcpError === 'rpc'
+                    ? {
+                        jsonrpc: '2.0',
+                        id: rpc.id,
+                        error: { code: -32603, message: 'Source unavailable' },
+                      }
+                    : harness.mcpError === 'malformed'
+                      ? { jsonrpc: '2.0', id: 'unrelated-id', result: toolResult }
+                      : {
+                          jsonrpc: '2.0',
+                          id: rpc.id,
+                          result: { ...toolResult, isError: harness.mcpError === 'tool' },
+                        }
+              emit({
+                id,
+                type: 'headers',
+                status: harness.mcpStatus,
+                headers: {
+                  'content-type':
+                    harness.mcpFormat === 'sse' ? 'text/event-stream' : 'application/json',
+                  ...(harness.mcpSession ? { 'mcp-session-id': harness.mcpSession } : {}),
+                },
+              })
+              const text =
+                harness.mcpFormat === 'sse'
+                  ? `: keepalive\r\nevent: message\r\ndata: ${JSON.stringify(body)}\r\n\r\n`
+                  : JSON.stringify(body)
+              // Exercise SSE framing and Unicode across native response chunks.
+              const bytes = new TextEncoder().encode(text)
+              for (let start = 0; start < bytes.length; start += 17) {
+                emit({
+                  id,
+                  type: 'data',
+                  data: btoa(String.fromCharCode(...bytes.subarray(start, start + 17))),
+                })
+              }
+              emit({ id, type: 'end' })
+            }, harness.mcpDelay)
           } else if (
             request.url.endsWith('/tools/search') ||
             request.url.endsWith('/tools/fetch')
@@ -604,6 +712,281 @@ test('Fetch reads explicit links with search off and can be disabled in settings
   expect(body.messages.find((m: { role: string }) => m.role === 'user').content).toContain(
     '抓取的独立资料内容'
   )
+})
+
+const openWebSettings = async (page: Page) => {
+  await page.getByRole('button', { name: '打开边栏', exact: true }).click()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('tab', { name: '联网与语音' }).click()
+}
+
+const configureGrok = async (page: Page) => {
+  await openWebSettings(page)
+  await page.getByLabel('联网 API 来源', { exact: true }).selectOption('grok')
+  await page.getByLabel('Grok API Key', { exact: true }).fill('xai-test-grok')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.reload()
+}
+
+const requestBody = (request?: Harness['requests'][number]) =>
+  JSON.parse(Buffer.from(request?.body ?? '', 'base64').toString())
+
+test('GrokSearch MCP SSE sends independent keys and preserves sources and summary across reload', async ({
+  page,
+}) => {
+  await openWebSettings(page)
+  await page.getByLabel('联网 API 来源', { exact: true }).selectOption('grok')
+  await page.getByLabel('MCP 完整地址', { exact: true }).fill('https://mcp.example/proxy/grok/mcp/')
+  await page.getByLabel('Grok API Key', { exact: true }).fill('xai-test-grok')
+  await page
+    .getByLabel('Grok Base URL（可选）', { exact: true })
+    .fill('https://grok-gateway.example/v1/')
+  await page
+    .getByLabel('Grok 搜索模型 ID（可选）', { exact: true })
+    .fill('grok-provider/search-model')
+  await page.getByText('网页来源与 MCP 鉴权（可选）', { exact: true }).click()
+  for (const label of [
+    'Tavily API Key',
+    'Exa API Key',
+    'TinyFish API Key',
+    'Firecrawl API Key',
+    'GitHub Token',
+  ]) {
+    await page.getByLabel(label, { exact: true }).fill(`test-${label.split(' ')[0]}`)
+  }
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.reload()
+  await page.getByRole('button', { name: '智能搜索', exact: true }).click()
+  const question = '搜索完整长提问'.repeat(40) + ' https://docs.example/grok'
+  await page.locator('textarea').fill(question)
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '停止生成', exact: true })).not.toBeVisible()
+  const requests = await page.evaluate(() => window.AndroidTest.requests)
+  const mcp = requests.filter((r) => r.url.endsWith('/api/mcp'))
+  expect(mcp.map((r) => requestBody(r).method)).toEqual([
+    'initialize',
+    'notifications/initialized',
+    'tools/call',
+    'tools/call',
+    'tools/call',
+  ])
+  expect(mcp.every((r) => r.baseUrl === 'https://mcp.example/proxy/grok/mcp')).toBe(true)
+  for (const r of mcp) {
+    expect(r.headers['x-grok-api-key']).toBe('xai-test-grok')
+    expect(r.headers['x-grok-base-url']).toBe('https://grok-gateway.example/v1')
+    expect(r.headers['x-grok-model']).toBe('grok-provider/search-model')
+    expect(r.headers['x-tavily-api-key']).toBe('test-Tavily')
+    expect(r.headers['x-exa-api-key']).toBe('test-Exa')
+    expect(r.headers['x-tinyfish-api-key']).toBe('test-TinyFish')
+    expect(r.headers['x-firecrawl-api-key']).toBe('test-Firecrawl')
+    expect(r.headers['x-github-token']).toBe('test-GitHub')
+    expect(r.headers.authorization).toBeUndefined()
+    expect(r.headers['x-api-key']).toBeUndefined()
+    expect(JSON.stringify(r)).not.toContain('sk-android-test-only')
+  }
+  expect(requestBody(mcp[2]).params).toEqual({
+    name: 'web_search',
+    arguments: { query: question, response_format: 'concise' },
+  })
+  expect(
+    mcp
+      .slice(3)
+      .map((r) => requestBody(r).params.arguments.url)
+      .sort()
+  ).toEqual(['https://docs.example/grok', 'https://grok-news.example/article'])
+  expect(mcp.slice(3).every((r) => requestBody(r).params.arguments.max_chars === 24000)).toBe(true)
+  const chat = requests.find((r) => r.url.endsWith('/messages'))
+  expect(chat?.baseUrl).toBe('https://api.deepseek.com')
+  const content = requestBody(chat).messages.at(-1).content
+  expect(content).toContain('Grok 整理摘要')
+  expect(content).toContain('Grok 来源摘要')
+  expect(content).toContain('Grok Fetch 返回的独立正文')
+  await page.getByText('已阅读 1 个网页', { exact: true }).click()
+  await expect(page.getByText('Grok 联网资料', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: /Grok 联网资料/ }).click()
+  expect(await page.evaluate(() => window.AndroidTest.links)).toContain(
+    'https://grok-news.example/article'
+  )
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.reload()
+  // Each turn initializes with the current saved credentials; previous context remains available.
+  await openWebSettings(page)
+  await expect(page.getByLabel('联网 API 来源', { exact: true })).toHaveValue('grok')
+  await expect(page.getByLabel('Grok API Key', { exact: true })).toHaveValue('xai-test-grok')
+  await page.getByLabel('MCP 完整地址', { exact: true }).fill('https://other-mcp.example/custom')
+  await page.getByLabel('Grok API Key', { exact: true }).fill('xai-new-key')
+  await page
+    .getByLabel('Grok Base URL（可选）', { exact: true })
+    .fill('https://new-gateway.example')
+  await page.getByLabel('Grok 搜索模型 ID（可选）', { exact: true }).fill('new-search-model')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.reload()
+  await page.getByRole('button', { name: '打开边栏', exact: true }).click()
+  await page.getByText('安卓验证对话', { exact: true }).click()
+  await page.locator('textarea').fill('继续使用刚才的网页资料')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByRole('button', { name: '停止生成', exact: true })).not.toBeVisible()
+  const after = await page.evaluate(() => window.AndroidTest.requests)
+  const newMcp = after.filter((r) => r.url.endsWith('/api/mcp'))
+  expect(requestBody(newMcp[0]).method).toBe('initialize')
+  expect(
+    newMcp.every(
+      (r) =>
+        r.baseUrl === 'https://other-mcp.example/custom' &&
+        r.headers['x-grok-api-key'] === 'xai-new-key' &&
+        r.headers['x-grok-model'] === 'new-search-model' &&
+        r.headers['x-grok-base-url'] === 'https://new-gateway.example'
+    )
+  ).toBe(true)
+  const historyMessages = requestBody(after.find((r) => r.url.endsWith('/messages'))).messages
+  expect(historyMessages.find((m: { role: string }) => m.role === 'user').content).toContain(
+    'Grok 整理摘要'
+  )
+})
+
+test('GrokSearch JSON text results support fetch-only, default gateway and MCP sessions', async ({
+  page,
+}) => {
+  await configureGrok(page)
+  await openWebSettings(page)
+  await page.getByText('网页来源与 MCP 鉴权（可选）', { exact: true }).click()
+  await page.getByLabel('MCP 鉴权 Key', { exact: true }).fill('test-mcp-auth')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.reload()
+  await page.evaluate(() => {
+    window.AndroidTest.mcpFormat = 'json'
+    window.AndroidTest.mcpStructured = false
+    window.AndroidTest.mcpSession = 'mcp-test-session'
+    window.AndroidTest.mcpVersion = '2025-06-18'
+  })
+  await page.locator('textarea').fill('读取 https://docs.example/fetch-only')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  const mcp = (await page.evaluate(() => window.AndroidTest.requests)).filter((r) =>
+    r.url.endsWith('/api/mcp')
+  )
+  expect(mcp).toHaveLength(3)
+  expect(mcp[0].baseUrl).toBe('https://mcp.episkeyai.com/groksearch_rs/mcp')
+  expect(requestBody(mcp[1]).id).toBeUndefined()
+  expect(requestBody(mcp[2]).params.name).toBe('web_fetch')
+  expect(mcp[2].headers['mcp-protocol-version']).toBe('2025-06-18')
+  expect(mcp[2].headers['mcp-session-id']).toBe('mcp-test-session')
+  expect(mcp[2].headers.authorization).toBe('Bearer test-mcp-auth')
+  expect(mcp[2].headers['x-grok-base-url']).toBeUndefined()
+  expect(mcp[2].headers['x-grok-model']).toBeUndefined()
+  const chat = await page.evaluate(() =>
+    window.AndroidTest.requests.find((r) => r.url.endsWith('/messages'))
+  )
+  expect(requestBody(chat).messages.at(-1).content).toContain('Grok Fetch 返回的独立正文')
+})
+
+test('switching GrokSearch and DeepSeek preserves saved provider settings and validates Grok input', async ({
+  page,
+}) => {
+  await openWebSettings(page)
+  await page.getByLabel('联网 API 来源', { exact: true }).selectOption('custom')
+  await page.getByLabel('服务 Base URL', { exact: true }).fill('https://web-saved.example/v1')
+  await page.getByLabel('服务 API Key', { exact: true }).fill('sk-saved-web')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.getByLabel('联网 API 来源', { exact: true }).selectOption('grok')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await expect(page.getByRole('alert')).toContainText('请填写 Grok API Key')
+  await page.getByLabel('Grok API Key', { exact: true }).fill('xai-test-grok')
+  await page.getByLabel('MCP 完整地址', { exact: true }).fill('http://bad.example/mcp')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.getByLabel('MCP 完整地址', { exact: true }).fill('https://mcp.example/mcp')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.reload()
+  await openWebSettings(page)
+  await page.getByLabel('联网 API 来源', { exact: true }).selectOption('custom')
+  await expect(page.getByLabel('服务 Base URL', { exact: true })).toHaveValue(
+    'https://web-saved.example/v1'
+  )
+  await expect(page.getByLabel('服务 API Key', { exact: true })).toHaveValue('sk-saved-web')
+  await page.getByRole('button', { name: '保存联网设置' }).click()
+  await page.reload()
+  await page.getByRole('button', { name: '智能搜索', exact: true }).click()
+  await page.locator('textarea').fill('切回 DeepSeek 搜索')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  const requests = await page.evaluate(() => window.AndroidTest.requests)
+  expect(requests.some((r) => r.url.endsWith('/api/mcp'))).toBe(false)
+  expect(requests.find((r) => r.url.endsWith('/tools/search'))?.baseUrl).toBe(
+    'https://web-saved.example/v1'
+  )
+  await openWebSettings(page)
+  await page.getByLabel('联网 API 来源', { exact: true }).selectOption('grok')
+  await expect(page.getByLabel('Grok API Key', { exact: true })).toHaveValue('xai-test-grok')
+})
+
+for (const error of ['rpc', 'tool', 'malformed'] as const) {
+  test(`GrokSearch ${error} failures keep chat available and do not fabricate live sources`, async ({
+    page,
+  }) => {
+    await configureGrok(page)
+    await page.evaluate((error) => {
+      window.AndroidTest.mcpError = error
+    }, error)
+    await page.getByRole('button', { name: '智能搜索', exact: true }).click()
+    await page.locator('textarea').fill('搜索并读 https://unavailable.example/page')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+    const chat = await page.evaluate(() =>
+      window.AndroidTest.requests.find((r) => r.url.endsWith('/messages'))
+    )
+    const content = requestBody(chat).messages.at(-1).content
+    expect(content).toContain('没有取得可用网页资料')
+    expect(content).not.toContain('Grok 整理摘要')
+    expect(content).not.toContain('Grok Fetch 返回')
+  })
+}
+
+test('GrokSearch HTTP authentication failure never falls back to the chat credentials', async ({
+  page,
+}) => {
+  await configureGrok(page)
+  await page.evaluate(() => {
+    window.AndroidTest.mcpStatus = 401
+  })
+  await page.getByRole('button', { name: '智能搜索', exact: true }).click()
+  await page.locator('textarea').fill('搜索测试')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  const requests = await page.evaluate(() => window.AndroidTest.requests)
+  expect(requests.filter((r) => r.url.endsWith('/api/mcp'))).toHaveLength(1)
+  expect(
+    requests
+      .filter((r) => r.url.endsWith('/api/mcp'))
+      .some((r) => JSON.stringify(r).includes('sk-android-test-only'))
+  ).toBe(false)
+  expect(
+    requestBody(requests.find((r) => r.url.endsWith('/messages'))).messages.at(-1).content
+  ).toContain('没有取得可用网页资料')
+})
+
+test('stopping GrokSearch cancels MCP before any chat completion starts', async ({ page }) => {
+  await configureGrok(page)
+  await page.evaluate(() => {
+    window.AndroidTest.mcpDelay = 500
+  })
+  await page.getByRole('button', { name: '智能搜索', exact: true }).click()
+  await page.locator('textarea').fill('停止搜索测试')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.AndroidTest.requests.filter((r) => r.url.endsWith('/api/mcp')).length
+      )
+    )
+    .toBe(3)
+  await page.getByRole('button', { name: '停止生成', exact: true }).click()
+  await expect(page.getByRole('button', { name: '停止生成', exact: true })).not.toBeVisible()
+  expect(await page.evaluate(() => window.AndroidTest.cancelled.length)).toBeGreaterThan(0)
+  expect(
+    await page.evaluate(() => window.AndroidTest.requests.some((r) => r.url.endsWith('/messages')))
+  ).toBe(false)
 })
 
 test('DeepSeek PCM speech handles odd chunks and an EOF after playback has ended', async ({

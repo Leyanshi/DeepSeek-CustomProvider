@@ -794,7 +794,7 @@ public final class MainActivity extends Activity {
                 Iterator<String> names = headers.keys();
                 while (names.hasNext()) {
                     String name = names.next();
-                    if (name.matches("(?i)authorization|x-api-key|anthropic-beta|anthropic-version|content-type|accept")) {
+                    if (ApiEndpoint.allowedHeader(path, name)) {
                         connection.setRequestProperty(name, headers.getString(name));
                     }
                 }
@@ -807,6 +807,9 @@ public final class MainActivity extends Activity {
             int status = connection.getResponseCode();
             if (status >= 300 && status < 400) { throw new Exception("API 返回了不受支持的重定向"); }
             JSONObject responseHeaders = new JSONObject().put("content-type", connection.getContentType() == null ? "application/json" : connection.getContentType());
+            if ("/mcp".equals(path) && connection.getHeaderField("Mcp-Session-Id") != null) {
+                responseHeaders.put("mcp-session-id", connection.getHeaderField("Mcp-Session-Id"));
+            }
             emit(event(id, "headers").put("status", status).put("headers", responseHeaders), true);
             InputStream response = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             if (response != null) {

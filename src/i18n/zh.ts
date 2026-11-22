@@ -22,10 +22,22 @@ export const zh = {
   serviceSettingsSaved: '服务设置已保存',
   webServiceTitle: '联网搜索与网页读取',
   webServiceDescription:
-    '开启智能搜索后调用 DeepSeek Search API，并将资料交给模型。支持提供相同 Search / Fetch 接口的服务。',
+    '开启智能搜索后获取联网资料并交给聊天模型。可选择 DeepSeek Search / Fetch 或 GrokSearch-rs 远程 MCP 服务。',
   webServiceSource: '联网 API 来源',
   webFetchLabel: '读取消息中的链接和前两个搜索结果的网页正文',
   webServiceSave: '保存联网设置',
+  grokServiceDescription:
+    '使用远程 GrokSearch-rs，不需在手机安装服务。Grok 和网页来源 Key 会发送到所填 MCP 服务，由它调用上游；这些设置独立于聊天 API。',
+  grokMcpUrl: 'MCP 完整地址',
+  grokApiKey: 'Grok API Key',
+  grokBaseUrl: 'Grok Base URL（可选）',
+  grokModel: 'Grok 搜索模型 ID（可选）',
+  grokModelHint: '留空使用 MCP 服务默认模型',
+  grokAdditionalKeys: '网页来源与 MCP 鉴权（可选）',
+  grokFetchHint:
+    '普通网页读取需配置 Tavily、Exa、TinyFish 或 Firecrawl 的 Key，且 MCP 服务需启用对应来源。GitHub、Wikipedia、arXiv 等专用读取器可免来源 Key。MCP 鉴权 Key 仅用于需要 Bearer 鉴权的自建服务。',
+  grokMcpKey: 'MCP 鉴权 Key',
+  grokConfigInvalid: '请填写 Grok API Key，并检查 HTTPS MCP 地址、Grok 网关地址和模型 ID',
   speechServiceTitle: '语音 API',
   speechServiceSource: '语音 API 来源',
   speechServiceDescription:

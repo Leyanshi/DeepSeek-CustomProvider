@@ -44,6 +44,9 @@ jobs:
       - name: Test model parsing
         run: pnpm test:models
 
+      - name: Test GrokSearch MCP responses
+        run: pnpm test:grok-search
+
       - name: Test frontend and native API URLs
         run: pnpm test:base-url
 

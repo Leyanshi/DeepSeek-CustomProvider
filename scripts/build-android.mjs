@@ -118,7 +118,7 @@ run(path.join(tools, 'aapt2.exe'), [
   '--target-sdk-version',
   '35',
   '--version-code',
-  '9',
+  '10',
   '--version-name',
   version,
   '--java',

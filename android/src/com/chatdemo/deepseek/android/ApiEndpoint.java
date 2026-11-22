@@ -8,6 +8,7 @@ public final class ApiEndpoint {
 
     public static String resolve(String baseUrl, String path, String method) throws Exception {
         boolean allowed = ("/models".equals(path) && "GET".equals(method))
+            || ("/mcp".equals(path) && "POST".equals(method))
             || (("/anthropic/v1/messages".equals(path) || "/anthropic/v1/files".equals(path) || "/v1/tools/asr".equals(path) || "/v1/tools/tts".equals(path) || "/v1/tools/search".equals(path) || "/v1/tools/fetch".equals(path) || "/v1/audio/speech".equals(path) || "/v1/audio/transcriptions".equals(path)) && "POST".equals(method))
             || (path != null && path.matches("/anthropic/v1/files/[a-zA-Z0-9_-]+") && "DELETE".equals(method));
         if (!allowed) { throw new IllegalArgumentException("API 接口不受支持"); }
@@ -18,6 +19,8 @@ public final class ApiEndpoint {
             throw new IllegalArgumentException("Base URL 必须是有效的 HTTPS 地址");
         }
         String base = uri.normalize().toASCIIString().replaceAll("/+$", "");
+        // The MCP bridge operation uses a full endpoint, including any proxy prefix.
+        if ("/mcp".equals(path)) { return base; }
         if (base.endsWith("/v1") && path.startsWith("/anthropic/v1/")) {
             return base + path.substring("/anthropic/v1".length());
         }
@@ -28,5 +31,10 @@ public final class ApiEndpoint {
             if (base.endsWith("/v1")) { return base + path.substring("/v1".length()); }
         }
         return base + path;
+    }
+
+    public static boolean allowedHeader(String path, String name) {
+        return name.matches("(?i)authorization|x-api-key|anthropic-beta|anthropic-version|content-type|accept")
+            || ("/mcp".equals(path) && name.matches("(?i)mcp-protocol-version|mcp-session-id|x-grok-api-key|x-grok-base-url|x-grok-model|x-tavily-api-key|x-exa-api-key|x-tinyfish-api-key|x-firecrawl-api-key|x-github-token"));
     }
 }

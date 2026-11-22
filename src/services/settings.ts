@@ -13,6 +13,12 @@ import {
   type SpeechConfig,
 } from './api/speechConfig.js'
 import { resetModelCapabilities } from './api/modelCapabilities.js'
+import {
+  defaultGrokSearchConfig,
+  normalizeGrokSearchConfig,
+  type GrokSearchConfig,
+  type WebProvider,
+} from './api/grokSearchConfig.js'
 
 export type Locale = 'zh-CN' | 'en-US'
 
@@ -31,6 +37,8 @@ type Settings = {
   thinking: boolean
   search: boolean
   webService: ServiceConnection
+  webProvider: WebProvider
+  grokSearch: GrokSearchConfig
   webFetch: boolean
   siderCollapsed: boolean
 }
@@ -47,6 +55,8 @@ const KEYS = {
   thinking: 'chat-demo:thinking',
   search: 'chat-demo:search',
   webService: 'chat-demo:web-service',
+  webProvider: 'chat-demo:web-provider',
+  grokSearch: 'chat-demo:grok-search',
   webFetch: 'chat-demo:web-fetch',
   siderCollapsed: 'chat-demo:sider-collapsed',
 } as const
@@ -144,6 +154,14 @@ const initialService = (key: string): ServiceConnection => {
   return { ...EMPTY_SERVICE }
 }
 
+const initialGrokSearch = (): GrokSearchConfig => {
+  try {
+    return normalizeGrokSearchConfig(JSON.parse(read(KEYS.grokSearch) ?? 'null'))
+  } catch {
+    return defaultGrokSearchConfig()
+  }
+}
+
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
   baseUrl: initialBaseUrl(),
@@ -155,6 +173,8 @@ export const useSettings = create<Settings>(() => ({
   thinking: read(KEYS.thinking) === 'true',
   search: read(KEYS.search) === 'true',
   webService: initialService(KEYS.webService),
+  webProvider: read(KEYS.webProvider) === 'grok' ? 'grok' : 'deepseek',
+  grokSearch: initialGrokSearch(),
   webFetch: read(KEYS.webFetch) !== 'false',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
 }))
@@ -207,11 +227,19 @@ export const setSearch = (search: boolean) => {
   useSettings.setState({ search })
 }
 
-export const setWebSettings = (service: ServiceConnection, webFetch: boolean) => {
+export const setWebSettings = (
+  service: ServiceConnection,
+  webFetch: boolean,
+  webProvider: WebProvider = 'deepseek',
+  grokConfig: GrokSearchConfig = useSettings.getState().grokSearch
+) => {
   const webService = normalizeServiceConnection(service)
+  const grokSearch = normalizeGrokSearchConfig(grokConfig)
   write(KEYS.webService, JSON.stringify(webService))
   write(KEYS.webFetch, String(webFetch))
-  useSettings.setState({ webService, webFetch })
+  write(KEYS.webProvider, webProvider)
+  write(KEYS.grokSearch, JSON.stringify(grokSearch))
+  useSettings.setState({ webService, webFetch, webProvider, grokSearch })
 }
 
 export const setSiderCollapsed = (siderCollapsed: boolean) => {

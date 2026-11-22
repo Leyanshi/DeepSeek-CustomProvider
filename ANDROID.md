@@ -6,7 +6,19 @@
 
 ## 安装
 
-将 `release/DeepSeek-Android-0.1.11.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，推荐较新的系统 WebView；已加入旧内核启动 API 和视口高度的兼容处理。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 9，可覆盖安装 0.1.3–0.1.10 并保留原有数据。
+将 `release/DeepSeek-Android-0.1.12.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，推荐较新的系统 WebView；已加入旧内核启动 API 和视口高度的兼容处理。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 10，可覆盖安装 0.1.3–0.1.11 并保留原有数据。
+
+0.1.12 新增 [GrokSearch-rs](https://github.com/Episkey-G/GrokSearch-rs) 搜索与 Fetch 来源：
+
+1. 打开「设置 → 联网与语音 → 联网 API 来源」，选择「GrokSearch-rs (MCP)」。
+2. 「MCP 完整地址」默认是上游提供的 `https://mcp.episkeyai.com/groksearch_rs/mcp`，也可填写自建的 HTTPS Streamable HTTP 地址。填写完整路径，程序不会再次追加 `/mcp`。
+3. 填写 Grok API Key。使用第三方 Grok 网关时同时填写配套的 Grok Base URL 和搜索模型 ID；留空则分别使用 MCP 服务默认地址及模型，通常为 `https://api.x.ai` 和 `grok-4-1-fast-reasoning`。网关需支持 Grok Responses 联网搜索。
+4. 展开「网页来源与 MCP 鉴权」，按需填写 Tavily、Exa、TinyFish 或 Firecrawl Key，且远程服务需启用对应来源。普通网页 Fetch 需要至少一个可用来源；GitHub、StackExchange、Wikipedia、arXiv 的专用读取器可免来源 Key。GitHub Token 可提高专用读取器限额；MCP 鉴权 Key 仅用于自建服务的 Bearer 鉴权。
+5. 点击「保存联网设置」。开启「智能搜索」调用 `web_search`；网页读取开关控制消息链接和前两个搜索结果的 `web_fetch`，总计最多三页。关闭搜索后仍可单独读链接；关闭网页读取后只搜索。
+
+GrokSearch-rs 是 MCP 服务，手机直接调用远程接口，不内置或安装 Rust 二进制，也不需要新的 Android 工具。Grok 和网页来源凭据会通过对应的 `X-*-Api-Key` 请求头发送给所填 MCP 服务，由它调用上游；聊天 Key 不会自动发送给 MCP。DeepSeek 与 GrokSearch 的设置独立保存，旧版升级默认仍使用 DeepSeek。更换 MCP 地址、Grok 网关、Key 或模型后，下次发送按新配置初始化，不复用旧会话。支持 MCP JSON/SSE 返回、协议协商和可选会话 ID，工具调用最多等待 120 秒，初始化最多 20 秒，停止生成会取消请求。失败保留失败状态、让聊天继续，并明确告知模型没有取得资料。
+
+搜索引用、Grok 整理摘要和 Fetch Markdown 会交给聊天模型，并保存进本地历史和 ZIP 导出。Grok 摘要标为外部参考数据；没有来源时仍提醒模型不能声称已核实实时信息。联网模型独立于聊天模型，聊天接口协议保持 Anthropic Messages。
 
 0.1.11 修复图片直发、联网搜索与网页读取、语音配置及思考参数兼容，使用方式如下。
 
@@ -15,7 +27,7 @@
 - 同一设置页可配置语音服务和接口格式。DeepSeek 使用 `/v1/tools/tts` 与 `/v1/tools/asr`，支持海星/暗潮音色、PCM/WAV；官方接口没有 TTS 模型字段。OpenAI 兼容格式使用 `/v1/audio/speech` 与 `/v1/audio/transcriptions`，可获取模型列表、填写 TTS 模型、识别模型及音色 ID，支持 PCM/WAV/MP3。保存后可点击「测试朗读」，回答的朗读按钮及输入框的录音按钮会使用同一服务。PCM 流按 24 kHz、16-bit 单声道播放；WAV/MP3 解码后播放，停止会取消网络和音频。
 - 思考能力按 Base URL 和模型分别记录，优先读取模型列表中的显式能力声明。接口明确返回不支持 `thinking` 或推理等级时，在尚未收到生成内容的情况下去掉相应参数重试，后续无论深度思考开关是否打开都省略已知不支持的参数。更换模型或地址不沿用其他模型/地址的判断；更换 API Key 清除旧判断，旧 Key 的迟到请求不能重新写入缓存。服务升级后也可在「数据管理」点击「重新检测当前模型的思考支持」。鉴权、限流和普通参数校验错误不会触发自动重试。
 
-0.1.10 新增启动更新检查。每次启动应用或从桌面再次打开，会在后台请求本仓库的 GitHub 最新正式 Release；检测到比安装版本更新的版本后，显示「更新版本： {version}」和完整更新日志。日志区域可上下滚动，没有显示长度限制。点击「打开 Release」可在系统浏览器打开对应发布页，下载 APK 后覆盖安装；点击「暂不更新」关闭弹窗，下次启动仍会检查。重用已有应用界面时保留会话，同时处理新的桌面启动请求；进行中的检查会合并，避免重复弹窗。
+  0.1.10 新增启动更新检查。每次启动应用或从桌面再次打开，会在后台请求本仓库的 GitHub 最新正式 Release；检测到比安装版本更新的版本后，显示「更新版本： {version}」和完整更新日志。日志区域可上下滚动，没有显示长度限制。点击「打开 Release」可在系统浏览器打开对应发布页，下载 APK 后覆盖安装；点击「暂不更新」关闭弹窗，下次启动仍会检查。重用已有应用界面时保留会话，同时处理新的桌面启动请求；进行中的检查会合并，避免重复弹窗。
 
 版本号按数字比较，例如 `0.1.10` 高于 `0.1.9`；相同版本、旧版本、草稿和预发布版不提示。网络不可用、超时、GitHub 限流、没有 Release 或响应无效时直接结束检查，不显示错误和 Toast。检查使用 Android 原生网络，请求公开的 GitHub API，不需要 GitHub 账号或新增依赖。弹窗在应用处于前台且启动完成或显示启动诊断后出现。
 
@@ -41,7 +53,7 @@ Base URL 支持 HTTPS 域名、端口和路径前缀。填写服务根地址时�
 
 聊天服务需支持 Anthropic Messages 接口与所选模型，更换地址和模型不会将聊天请求改为 OpenAI Chat Completions 协议。图片直发不需要 Files API；文档仍需要 Files API。联网和语音可以使用独立服务，不要求聊天服务实现内置搜索工具。Base URL 不允许 HTTP、用户名、密码、查询参数或 URL 片段。
 
-保留流式聊天、停止生成、附件、公式与图表、主题、语音、聊天记录导入导出功能。文件选择和 ZIP 导出使用 Android 的系统文件窗口，不申请全盘存储权限；录音时才申请麦克风权限。搜索、附件和语音是否可用取决于 DeepSeek API 对相应接口和模型的支持。
+保留流式聊天、停止生成、附件、公式与图表、主题、语音、聊天记录导入导出功能。文件选择和 ZIP 导出使用 Android 的系统文件窗口，不申请全盘存储权限；录音时才申请麦克风权限。搜索、附件和语音是否可用取决于所配置服务对相应接口和模型的支持。
 
 ## 轻量构建
 
@@ -70,6 +82,7 @@ corepack pnpm type
 corepack pnpm lint
 corepack pnpm test:base-url
 corepack pnpm test:models
+corepack pnpm test:grok-search
 corepack pnpm test:android-assets
 corepack pnpm test:android-updates
 corepack pnpm test:android
@@ -78,16 +91,16 @@ corepack pnpm test:android
 验证已打包的 APK 时，直接从 APK 读取网页资源再运行相同的手机尺寸测试：
 
 ```powershell
-$env:DS_ANDROID_TEST_APK = 'release/DeepSeek-Android-0.1.11.apk'
+$env:DS_ANDROID_TEST_APK = 'release/DeepSeek-Android-0.1.12.apk'
 corepack pnpm exec playwright test
 Remove-Item Env:DS_ANDROID_TEST_APK
 ```
 
-界面和桥接测试用电脑已有的 Edge 在手机尺寸下运行，模拟 Android 原生 API，并使用 Android 壳相同的内容安全策略。不需要真实 API Key，不产生调用费用，也不安装测试浏览器或模拟器。24 项测试覆盖聊天和启动回归，并检查图片直接发送与历史重载、Search/Fetch 的独立连接与失败处理、DeepSeek/OpenAI 语音请求、PCM 分片和迟到的流结束、WAV 解码、失败重试、模拟麦克风录音转写，以及思考能力声明、参数自动省略、换模型/Key 与缓存重载。另有 5 项打包测试覆盖 Windows ZIP 路径、资源保留、路径冲突、缺失脚本及内容过期。8 项模型测试检查模型列表和能力解析、检测错误及旧请求缓存隔离；Base URL 测试同时检查前端和 Android 原生的 URL 拼接及接口边界。打包脚本自动验证 APK 签名、全部网页资源、文件对齐与 Android 清单。
+界面和桥接测试用电脑已有的 Edge 在手机尺寸下运行，模拟 Android 原生 API，并使用 Android 壳相同的内容安全策略。不需要真实 API Key，不产生调用费用，也不安装测试浏览器或模拟器。32 项测试覆盖聊天和启动回归，并检查图片直接发送与历史重载、Search/Fetch 的独立连接与失败处理、DeepSeek/OpenAI 语音请求、PCM 分片和迟到的流结束、WAV 解码、失败重试、模拟麦克风录音转写，以及思考能力声明、参数自动省略、换模型/Key 与缓存重载。GrokSearch 检查包括分片 SSE/JSON、MCP 初始化与会话、切换来源、独立凭据与新网关/Key/模型、历史摘要保留、错误与停止；6 项协议测试验证响应、引用和 Markdown 正文。另有 5 项打包测试覆盖 Windows ZIP 路径、资源保留、路径冲突、缺失脚本及内容过期。8 项模型测试检查模型列表和能力解析、检测错误及旧请求缓存隔离；Base URL 测试同时检查前端和 Android 原生的 URL 拼接、MCP 请求头白名单及接口边界。打包脚本自动验证 APK 签名、全部网页资源、文件对齐与 Android 清单。
 
 更新逻辑另有 22 项 JDK 检查，覆盖数字版本比较、相同和旧版本、无效版本、草稿和预发布、请求失败、空响应及长中文日志的完整保留。不安装模拟器或额外测试依赖。
 
-这些检查不代替 Android 真机验收。目前没有进行真机上的更新弹窗、原生加载层、超时诊断、剪贴板、TXT 导出、系统文件窗口、麦克风和键盘适配测试。旧包的资源路径错误已确认；是否还有手机特有问题以及粘贴为空的原因，需要真机反馈。
+这些检查不代替 Android 真机验收，也没有使用真实 Key 对 Grok 进行联调。目前没有进行真机上的更新弹窗、原生加载层、超时诊断、剪贴板、TXT 导出、系统文件窗口、麦克风和键盘适配测试。旧包的资源路径错误已确认；是否还有手机特有问题以及粘贴为空的原因，需要真机反馈。
 
 ## 数据与更新
 

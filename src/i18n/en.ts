@@ -25,10 +25,22 @@ export const en = {
   serviceSettingsSaved: 'Service settings saved',
   webServiceTitle: 'Web search and page reading',
   webServiceDescription:
-    'Smart Search calls DeepSeek Search and sends sources to the model. Services implementing the same Search / Fetch APIs are supported.',
+    'Smart Search sends retrieved sources to the chat model. Choose DeepSeek Search / Fetch or a remote GrokSearch-rs MCP service.',
   webServiceSource: 'Web API source',
   webFetchLabel: 'Read links in messages and the first two search results',
   webServiceSave: 'Save web settings',
+  grokServiceDescription:
+    'Use remote GrokSearch-rs without installing a server on your phone. Grok and source keys are sent to the configured MCP service for upstream calls; these settings are independent of the chat API.',
+  grokMcpUrl: 'Full MCP endpoint URL',
+  grokApiKey: 'Grok API Key',
+  grokBaseUrl: 'Grok Base URL (optional)',
+  grokModel: 'Grok search model ID (optional)',
+  grokModelHint: 'Leave blank to use the MCP server’s default model',
+  grokAdditionalKeys: 'Page sources and MCP authentication (optional)',
+  grokFetchHint:
+    'General page reading requires a Tavily, Exa, TinyFish or Firecrawl key and the matching source enabled on the MCP server. Specialist readers for GitHub, Wikipedia and arXiv can work without source keys. The MCP authentication key is only for self-hosted services requiring Bearer authentication.',
+  grokMcpKey: 'MCP authentication key',
+  grokConfigInvalid: 'Enter a Grok API key and check the HTTPS MCP URL, Grok gateway and model ID',
   speechServiceTitle: 'Speech API',
   speechServiceSource: 'Speech API source',
   speechServiceDescription:

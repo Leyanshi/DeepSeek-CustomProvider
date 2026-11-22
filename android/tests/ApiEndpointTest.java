@@ -15,14 +15,27 @@ public final class ApiEndpointTest {
         check("https://web.example", "/v1/tools/fetch", "POST", "https://web.example/v1/tools/fetch");
         check("https://speech.example/anthropic/v1", "/v1/audio/speech", "POST", "https://speech.example/v1/audio/speech");
         check("https://speech.example/v1", "/v1/audio/transcriptions", "POST", "https://speech.example/v1/audio/transcriptions");
+        check("https://mcp.episkeyai.com/groksearch_rs/mcp", "/mcp", "POST", "https://mcp.episkeyai.com/groksearch_rs/mcp");
+        check("https://mcp.example:8443/proxy/custom-endpoint/", "/mcp", "POST", "https://mcp.example:8443/proxy/custom-endpoint");
         for (String value : new String[] { "http://example.com", "https://user@example.com", "https://example.com?key=secret", "https://example.com#fragment", "https://example.com/a%2fb", "https://example.com/a%5cb", "https://example.com/%00", "https://example.com:0" }) {
             reject(value, "/models", "GET");
         }
         reject("https://example.com", "/models", "POST");
+        reject("https://example.com", "/mcp", "GET");
+        reject("https://example.com", "/mcp", "DELETE");
+        reject("https://example.com", "/mcp/other", "POST");
         reject("https://example.com", "/v1/tools/search", "GET");
         reject("https://example.com", "/v1/audio/speech", "DELETE");
         reject("https://example.com", "//other.com/models", "GET");
         reject("https://example.com", "/anthropic/v1/files/../models", "DELETE");
+        for (String header : new String[] { "X-Grok-Api-Key", "x-grok-base-url", "X-Grok-Model", "X-Tavily-Api-Key", "X-Exa-Api-Key", "X-Tinyfish-Api-Key", "X-Firecrawl-Api-Key", "X-GitHub-Token", "MCP-Protocol-Version", "Mcp-Session-Id" }) {
+            if (!ApiEndpoint.allowedHeader("/mcp", header) || ApiEndpoint.allowedHeader("/anthropic/v1/messages", header)) {
+                throw new AssertionError("MCP header routing: " + header);
+            }
+        }
+        for (String header : new String[] { "Host", "Cookie", "Origin", "X-Unrelated-Key", "X-Grok-Api-Key\r\nInjected" }) {
+            if (ApiEndpoint.allowedHeader("/mcp", header)) { throw new AssertionError("Unexpectedly allowed header: " + header); }
+        }
         System.out.println("Native Base URL validation and endpoint routing passed");
     }
     private static void check(String base, String endpoint, String method, String expected) throws Exception {

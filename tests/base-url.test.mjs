@@ -52,6 +52,16 @@ test('uses service prefixes for all endpoints without duplicating /v1', () => {
       'https://example.com/proxy/v1/tools/search',
     ],
     ['https://example.com', '/v1/tools/fetch', 'https://example.com/v1/tools/fetch'],
+    [
+      'https://mcp.episkeyai.com/groksearch_rs/mcp',
+      '/mcp',
+      'https://mcp.episkeyai.com/groksearch_rs/mcp',
+    ],
+    [
+      'https://mcp.example:8443/proxy/custom-endpoint/',
+      '/mcp',
+      'https://mcp.example:8443/proxy/custom-endpoint',
+    ],
     ['https://example.com/anthropic/v1', '/v1/audio/speech', 'https://example.com/v1/audio/speech'],
     [
       'https://example.com/v1',

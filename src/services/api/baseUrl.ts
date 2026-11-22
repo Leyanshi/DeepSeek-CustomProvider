@@ -22,6 +22,10 @@ export const normalizeBaseUrl = (value: string): string => {
 /** Avoid duplicating /v1 when the configured URL already contains an API prefix. */
 export const resolveApiUrl = (baseUrl: string, endpoint: string): string => {
   const base = normalizeBaseUrl(baseUrl)
+  // /mcp is a bridge operation; its baseUrl is the complete remote MCP endpoint.
+  if (endpoint === '/mcp') {
+    return base
+  }
   if (base.endsWith('/v1') && endpoint.startsWith('/anthropic/v1/')) {
     return base + endpoint.slice('/anthropic/v1'.length)
   }

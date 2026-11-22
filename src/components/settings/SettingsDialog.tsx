@@ -23,6 +23,7 @@ import {
   setLocale,
   setLocation,
   setThemePreference,
+  setAutoTitle,
   useSettings,
   type ThemePreference,
 } from '../../services/settings.js'
@@ -112,6 +113,7 @@ const SettingsContent = ({ open }: { open: boolean }) => {
             <>
               <ThemeSetting />
               <LocaleSetting />
+              <AutoTitleSetting />
               <LocationSetting />
             </>
           ) : section === 'services' ? (
@@ -307,6 +309,24 @@ const LocaleSetting = () => {
         />
       }
     />
+  )
+}
+
+const AutoTitleSetting = () => {
+  const t = useTranslate()
+  const enabled = useSettings((state) => state.autoTitle)
+  return (
+    <div className={styles.cell}>
+      <label className={styles.serviceCheck}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => setAutoTitle(event.target.checked)}
+        />
+        {t('autoTitleLabel')}
+      </label>
+      <p className={styles.description}>{t('autoTitleDescription')}</p>
+    </div>
   )
 }
 

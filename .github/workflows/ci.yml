@@ -47,6 +47,9 @@ jobs:
       - name: Test GrokSearch MCP responses
         run: pnpm test:grok-search
 
+      - name: Test chat search and title parsing
+        run: pnpm test:chat-search
+
       - name: Test frontend and native API URLs
         run: pnpm test:base-url
 

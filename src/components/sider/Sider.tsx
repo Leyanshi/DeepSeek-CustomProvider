@@ -1,7 +1,13 @@
 import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
+import {
+  IconPanelLeftOutline16,
+  IconSettingsOutline16,
+  IconSearchOutline16,
+  IconCloseOutline16,
+  NewChatIcon,
+} from '../base/icons.js'
 import { setSiderCollapsed } from '../../services/settings.js'
 import { groupSessions } from '../../services/chat/sessionGroups.js'
 import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
@@ -13,6 +19,7 @@ import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
 import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
 import { SessionItem } from './SessionItem.js'
+import { useChatSearch } from './useChatSearch.js'
 import deepseekLogo from '../../../resources/deepseek.svg'
 import styles from './Sider.module.css'
 
@@ -21,6 +28,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const t = useTranslate()
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
+  const [query, setQuery] = useState('')
+  const search = useChatSearch(query, sessions, t('untitledChat'))
   const [now, setNow] = useState(Date.now)
   const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
@@ -81,21 +90,85 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         </span>
         {t('newChat')}
       </button>
+      <div className={styles.search}>
+        <IconSearchOutline16 />
+        <input
+          type="search"
+          aria-label={t('chatSearchPlaceholder')}
+          placeholder={t('chatSearchPlaceholder')}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && query) {
+              event.stopPropagation()
+              setQuery('')
+            }
+          }}
+        />
+        {query ? (
+          <IconButton
+            icon={<IconCloseOutline16 />}
+            aria-label={t('chatSearchClear')}
+            onClick={() => setQuery('')}
+          />
+        ) : null}
+      </div>
       <div className={styles.listWrap}>
         <div className={styles.list}>
-          {groups.map((group) => (
-            <div key={group.key} className={styles.section}>
-              <div className={styles.sectionHeader}>{group.label}</div>
-              {group.sessions.map((session) => (
-                <SessionItem
-                  key={session.id}
-                  session={session}
-                  active={session.id === activeId}
-                  onDelete={() => setDeleting(session)}
-                />
-              ))}
-            </div>
-          ))}
+          {search.active ? (
+            <>
+              <div
+                className={styles.searchStatus}
+                role="status"
+                aria-label={t('chatSearchPlaceholder')}
+              >
+                {t(
+                  search.error
+                    ? 'chatSearchFailed'
+                    : search.pending
+                      ? 'chatSearchPending'
+                      : search.total
+                        ? 'chatSearchCount'
+                        : 'chatSearchEmpty',
+                  { count: search.total }
+                )}
+              </div>
+              {search.error ? (
+                <Button size="m" onClick={search.retry}>
+                  {t('retry')}
+                </Button>
+              ) : null}
+              {!search.error &&
+                search.results.map((session) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    excerpt={session.excerpt}
+                    active={session.id === activeId}
+                    onDelete={() => setDeleting(session)}
+                  />
+                ))}
+              {!search.pending && search.results.length < search.total ? (
+                <Button size="m" onClick={search.more}>
+                  {t('chatSearchMore')}
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            groups.map((group) => (
+              <div key={group.key} className={styles.section}>
+                <div className={styles.sectionHeader}>{group.label}</div>
+                {group.sessions.map((session) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    active={session.id === activeId}
+                    onDelete={() => setDeleting(session)}
+                  />
+                ))}
+              </div>
+            ))
+          )}
         </div>
       </div>
       <div className={styles.bottom}>

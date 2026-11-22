@@ -13,10 +13,12 @@ export const SessionItem = memo(function SessionItem({
   session,
   active,
   onDelete,
+  excerpt,
 }: {
   session: SessionSummary
   active: boolean
   onDelete: () => void
+  excerpt?: string
 }) {
   const t = useTranslate()
   const [editing, setEditing] = useState(false)
@@ -31,6 +33,7 @@ export const SessionItem = memo(function SessionItem({
     }
     return (
       <input
+        aria-label={t('sessionItemMenuRenameOption')}
         className={styles.renameInput}
         defaultValue={displayTitle}
         autoFocus
@@ -49,13 +52,17 @@ export const SessionItem = memo(function SessionItem({
 
   return (
     <div
-      className={clsx(styles.item, active && styles.active)}
+      className={clsx(styles.item, active && styles.active, excerpt && styles.searchItem)}
+      data-session-id={session.id}
       onClick={() => {
         selectSession(session.id)
         closeMobileSider()
       }}
     >
-      <div className={styles.title}>{displayTitle}</div>
+      <div className={styles.text}>
+        <div className={styles.title}>{displayTitle}</div>
+        {excerpt ? <div className={styles.excerpt}>{excerpt}</div> : null}
+      </div>
       <div className={styles.action} onClick={(event) => event.stopPropagation()}>
         <Menu
           options={[

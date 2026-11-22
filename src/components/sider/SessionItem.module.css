@@ -30,13 +30,33 @@
   }
 }
 
-.title {
+.text {
   flex: 1;
   min-width: 0;
+}
+
+.title {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   line-height: 18px;
+}
+
+.item.searchItem {
+  height: auto;
+  min-height: 62px;
+}
+
+.excerpt {
+  margin-top: 4px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 17px;
+  opacity: 0.7;
 }
 
 .action {

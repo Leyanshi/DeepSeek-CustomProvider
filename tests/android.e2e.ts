@@ -15,6 +15,7 @@ const apkAssets = process.env.DS_ANDROID_TEST_APK
 
 type Harness = {
   requests: {
+    id: string
     url: string
     baseUrl: string
     method: string
@@ -22,6 +23,10 @@ type Harness = {
     body: string
   }[]
   cancelled: string[]
+  titleRequests: Harness['requests']
+  titleStatus: number
+  titleText: string
+  titleDelay: number
   saved: { name: string; type: string; chunks: string[] }[]
   links: string[]
   dark: boolean
@@ -84,6 +89,10 @@ test.beforeEach(async ({ page }) => {
     const harness: Harness = {
       requests: [],
       cancelled: [],
+      titleRequests: [],
+      titleStatus: 200,
+      titleText: '安卓验证对话',
+      titleDelay: 0,
       saved: [],
       links: [],
       dark: false,
@@ -128,7 +137,12 @@ test.beforeEach(async ({ page }) => {
       },
       request(payload: string) {
         const request = JSON.parse(payload)
-        harness.requests.push(request)
+        const isTitle =
+          request.url.endsWith('/messages') &&
+          JSON.parse(
+            new TextDecoder().decode(Uint8Array.from(atob(request.body), (c) => c.charCodeAt(0)))
+          ).max_tokens === 96
+        ;(isTitle ? harness.titleRequests : harness.requests).push(request)
         const id = request.id
         setTimeout(() => {
           if (request.url.endsWith('/models')) {
@@ -361,13 +375,19 @@ test.beforeEach(async ({ page }) => {
           } else {
             const body = JSON.parse(atob(request.body))
             if (
-              harness.chatStatus !== 200 ||
-              (harness.rejectThinking && body.thinking !== undefined)
+              (isTitle && harness.titleStatus !== 200) ||
+              (!isTitle &&
+                (harness.chatStatus !== 200 ||
+                  (harness.rejectThinking && body.thinking !== undefined)))
             ) {
               emit({
                 id,
                 type: 'headers',
-                status: harness.chatStatus !== 200 ? harness.chatStatus : 400,
+                status: isTitle
+                  ? harness.titleStatus
+                  : harness.chatStatus !== 200
+                    ? harness.chatStatus
+                    : 400,
                 headers: { 'content-type': 'application/json' },
               })
               data(
@@ -399,14 +419,16 @@ test.beforeEach(async ({ page }) => {
                 index: 0,
                 delta: {
                   type: 'text_delta',
-                  text: '安卓聊天验证成功。\n\n公式：$E=mc^2$\n\n[DeepSeek 官网](https://www.deepseek.com)',
+                  text: isTitle
+                    ? harness.titleText
+                    : '安卓聊天验证成功。\n\n公式：$E=mc^2$\n\n[DeepSeek 官网](https://www.deepseek.com)',
                 },
               },
               { type: 'content_block_stop', index: 0 },
               {
                 type: 'message_delta',
                 delta: {
-                  stop_reason: harness.stopReason,
+                  stop_reason: isTitle ? 'end_turn' : harness.stopReason,
                   stop_sequence: null,
                   title: '安卓验证对话',
                 },
@@ -414,15 +436,18 @@ test.beforeEach(async ({ page }) => {
               { type: 'message_stop' },
             ]
             events.forEach((event, index) =>
-              setTimeout(() => {
-                if (harness.cancelled.includes(id)) {
-                  return
-                }
-                data(id, `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
-                if (index === events.length - 1) {
-                  emit({ id, type: 'end' })
-                }
-              }, index * 70)
+              setTimeout(
+                () => {
+                  if (harness.cancelled.includes(id)) {
+                    return
+                  }
+                  data(id, `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+                  if (index === events.length - 1) {
+                    emit({ id, type: 'end' })
+                  }
+                },
+                index * 70 + (isTitle ? harness.titleDelay : 0)
+              )
             )
           }
         }, 15)
@@ -734,7 +759,17 @@ test('stopping a streaming Android reply cancels the native network request', as
   await page.locator('textarea').fill('测试停止生成')
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await page.getByRole('button', { name: '停止生成', exact: true }).click()
-  await expect.poll(() => page.evaluate(() => window.AndroidTest.cancelled.length)).toBe(1)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.AndroidTest.requests.filter(
+            (request) =>
+              request.url.endsWith('/messages') && window.AndroidTest.cancelled.includes(request.id)
+          ).length
+      )
+    )
+    .toBe(1)
 })
 
 test('images send inline without Files API and survive history reload', async ({ page }) => {
@@ -1809,4 +1844,361 @@ test('empty, failed and malformed catalogs permit retry and preserve manual mode
   await expect(page.getByRole('status')).toContainText('已获取 1 个模型')
   await expect(page.getByRole('alert')).not.toBeVisible()
   await expect(page.getByLabel('自定义模型 ID', { exact: true })).toHaveValue('provider/unlisted')
+})
+
+const openChatSidebar = async (page: Page) => {
+  const opener = page.getByRole('button', { name: '打开边栏', exact: true })
+  if (await opener.isVisible()) {
+    await opener.click()
+  }
+}
+
+const toggleAutoTitles = async (page: Page, enabled: boolean) => {
+  await openChatSidebar(page)
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByLabel('AI 自动设置对话标题', { exact: true }).setChecked(enabled)
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  const closer = page.getByRole('button', { name: '收起边栏', exact: true })
+  if (await closer.isVisible()) {
+    await closer.click()
+  }
+}
+
+test('automatic titles use only the first message and snapshot the custom connection without delaying chat', async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    localStorage.setItem('chat-demo:api-key', 'sk-title-custom-test')
+    localStorage.setItem('chat-demo:base-url', 'https://title-provider.example/v1')
+    localStorage.setItem('chat-demo:model', 'provider/title-model')
+  })
+  await page.reload()
+  await page.evaluate(() => {
+    window.AndroidTest.titleDelay = 1600
+  })
+  await page.locator('textarea').fill('帮我规划上海三天旅行')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  await openChatSidebar(page)
+  await expect(page.locator('[data-session-id]').getByText('新对话', { exact: true })).toBeVisible()
+  const titleRequests = await page.evaluate(() => window.AndroidTest.titleRequests)
+  expect(titleRequests).toHaveLength(1)
+  expect(titleRequests[0].baseUrl).toBe('https://title-provider.example/v1')
+  expect(titleRequests[0].headers['x-api-key']).toBe('sk-title-custom-test')
+  const titleBody = requestBody(titleRequests[0])
+  expect(titleBody.model).toBe('provider/title-model')
+  expect(titleBody.messages).toEqual([{ role: 'user', content: '帮我规划上海三天旅行' }])
+  expect(titleBody.thinking).toBeUndefined()
+  expect(titleBody.title).toBeUndefined()
+  await expect(
+    page.locator('[data-session-id]').getByText('安卓验证对话', { exact: true })
+  ).toBeVisible()
+  await page.getByRole('button', { name: '收起边栏', exact: true }).click()
+  await page.locator('textarea').fill('第二条消息不应重新命名')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toHaveCount(2)
+  expect(await page.evaluate(() => window.AndroidTest.titleRequests.length)).toBe(1)
+  const chatBodies = (
+    await page.evaluate(() =>
+      window.AndroidTest.requests.filter((r) => r.url.endsWith('/messages'))
+    )
+  ).map(requestBody)
+  expect(chatBodies.every((body) => body.title === undefined)).toBe(true)
+  await page.reload()
+  await openChatSidebar(page)
+  await page.getByText('安卓验证对话', { exact: true }).click()
+  await expect(page.getByText('第二条消息不应重新命名', { exact: true })).toBeVisible()
+})
+
+test('disabled automatic titles persist and ignore server title metadata', async ({ page }) => {
+  await toggleAutoTitles(page, false)
+  await page.reload()
+  expect(await page.evaluate(() => localStorage.getItem('chat-demo:auto-title'))).toBe('false')
+  await page.locator('textarea').fill('关闭自动标题的对话')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  await openChatSidebar(page)
+  await expect(page.locator('[data-session-id]').getByText('新对话', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.AndroidTest.titleRequests)).toHaveLength(0)
+})
+
+for (const failure of ['http', 'empty', 'multiline']) {
+  test(`automatic title ${failure} failures leave New chat and do not retry on later messages`, async ({
+    page,
+  }) => {
+    await page.evaluate((failure) => {
+      window.AndroidTest.titleStatus = failure === 'http' ? 503 : 200
+      window.AndroidTest.titleText = failure === 'empty' ? '' : '标题\n错误的多行说明'
+    }, failure)
+    await page.locator('textarea').fill('标题请求失败也能继续聊天')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+    await openChatSidebar(page)
+    await expect(
+      page.locator('[data-session-id]').getByText('新对话', { exact: true })
+    ).toBeVisible()
+    await page.getByRole('button', { name: '收起边栏', exact: true }).click()
+    await page.locator('textarea').fill('再次发送消息')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toHaveCount(2)
+    expect(await page.evaluate(() => window.AndroidTest.titleRequests.length)).toBe(1)
+  })
+}
+
+test('manual renaming cancels a pending automatic title and survives reload', async ({ page }) => {
+  await page.evaluate(() => {
+    window.AndroidTest.titleDelay = 2500
+  })
+  await page.locator('textarea').fill('标题晚返回的对话')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  await openChatSidebar(page)
+  await page.locator('[data-session-id]').getByRole('button', { name: '更多' }).click()
+  await page.getByText('重命名', { exact: true }).click()
+  const editor = page.getByRole('textbox', { name: '重命名', exact: true })
+  await editor.fill('我自己设置的名称')
+  await editor.press('Enter')
+  await expect(
+    page.locator('[data-session-id]').getByText('我自己设置的名称', { exact: true })
+  ).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => window.AndroidTest.cancelled.length))
+    .toBeGreaterThan(0)
+  await page.reload()
+  await openChatSidebar(page)
+  await expect(
+    page.locator('[data-session-id]').getByText('我自己设置的名称', { exact: true })
+  ).toBeVisible()
+})
+
+test('turning automatic titles off cancels the pending request immediately', async ({ page }) => {
+  await page.evaluate(() => {
+    window.AndroidTest.titleDelay = 5000
+  })
+  await page.locator('textarea').fill('关闭开关之前发出的消息')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => window.AndroidTest.titleRequests.length)).toBe(1)
+  await toggleAutoTitles(page, false)
+  await expect
+    .poll(() => page.evaluate(() => window.AndroidTest.cancelled.length))
+    .toBeGreaterThan(0)
+  await openChatSidebar(page)
+  await expect(page.locator('[data-session-id]').getByText('新对话', { exact: true })).toBeVisible()
+})
+
+test('automatic titles of concurrent chats update the matching conversation', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 1000 })
+  await page.evaluate(() => {
+    window.AndroidTest.titleDelay = 1600
+    window.AndroidTest.titleText = '第一个对话的标题'
+  })
+  await page.locator('textarea').fill('第一条消息属于第一个对话')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '开启新对话', exact: true }).click()
+  await page.evaluate(() => {
+    window.AndroidTest.titleText = '第二个对话的标题'
+  })
+  await page.locator('textarea').fill('第二个对话有独立的第一条消息')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(
+    page.locator('[data-session-id]').getByText('第一个对话的标题', { exact: true })
+  ).toBeVisible()
+  await expect(
+    page.locator('[data-session-id]').getByText('第二个对话的标题', { exact: true })
+  ).toBeVisible()
+  await page.locator('[data-session-id]').getByText('第一个对话的标题', { exact: true }).click()
+  await expect(page.getByText('第一条消息属于第一个对话', { exact: true })).toBeVisible()
+})
+
+test('an image-only first message can generate its title using inline multimodal content', async ({
+  page,
+}) => {
+  const image = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',
+    'base64'
+  )
+  await page
+    .locator('input[type=file][multiple]')
+    .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: image })
+  await expect(page.getByRole('button', { name: '发送', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.AndroidTest.titleRequests.length)).toBe(1)
+  const body = requestBody((await page.evaluate(() => window.AndroidTest.titleRequests))[0])
+  expect(body.messages[0].content[1]).toEqual({
+    type: 'image',
+    source: { type: 'base64', media_type: 'image/png', data: image.toString('base64') },
+  })
+})
+
+const chatSearchStatus = (page: Page) =>
+  page.getByRole('status', { name: '搜索对话名称或内容', exact: true })
+
+const seedSearchHistory = async (page: Page, count: number) => {
+  await page.evaluate(async (count) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const opening = indexedDB.open('chat-demo')
+      opening.onsuccess = () => resolve(opening.result)
+      opening.onerror = () => reject(opening.error)
+    })
+    try {
+      const tx = db.transaction(['sessions', 'sessionSummaries'], 'readwrite')
+      for (let index = 0; index < count; index++) {
+        const id = `search-seed-${index}`
+        const session = {
+          id,
+          title: index === 0 ? '上海旅行计划' : `归档对话 ${index}`,
+          createdAt: Date.now() - index,
+          updatedAt: Date.now() - index,
+          messages: [
+            {
+              id: id + '-u',
+              role: 'user',
+              content: (index === 1 ? '上海旅行预算两千元' : '普通用户消息') + '文字'.repeat(8000),
+              files: [],
+              createdAt: 1,
+            },
+            {
+              id: id + '-a',
+              role: 'assistant',
+              model: null,
+              status: 'done',
+              prefix: true,
+              blocks: [
+                { type: 'text', text: index === 2 ? '请游览 the Bund，外滩夜景' : '普通助手回答' },
+              ],
+              createdAt: 2,
+            },
+            {
+              id: id + '-branch',
+              role: 'user',
+              content: index === 3 ? '历史另一个版本：杭州西湖' : '消息分支',
+              files: [],
+              parentId: null,
+              createdAt: 3,
+            },
+          ],
+        }
+        tx.objectStore('sessions').put(session)
+        tx.objectStore('sessionSummaries').put({
+          id,
+          title: session.title,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+          fileIds: [],
+        })
+      }
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    } finally {
+      db.close()
+    }
+  }, count)
+  await page.reload()
+}
+
+for (const width of [390, 1024]) {
+  test(`chat search at ${width}px reads history in two workers and supports messages, pagination and latest query`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await seedSearchHistory(page, 600)
+    const workerContexts: import('@playwright/test').Worker[] = []
+    page.on('worker', (worker) => workerContexts.push(worker))
+    await openChatSidebar(page)
+    const search = page.getByRole('searchbox', { name: '搜索对话名称或内容' })
+    await search.fill('上海')
+    await expect(chatSearchStatus(page)).toHaveText('找到 2 个对话')
+    expect(workerContexts).toHaveLength(2)
+    expect(await workerContexts[0].evaluate(() => typeof document)).toBe('undefined')
+    await expect(page.locator('[data-session-id]')).toHaveCount(2)
+    await search.fill('归档对话')
+    await expect(chatSearchStatus(page)).toHaveText('找到 599 个对话')
+    await expect(page.locator('[data-session-id]')).toHaveCount(50)
+    await page.getByRole('button', { name: '显示更多', exact: true }).click()
+    await expect(page.locator('[data-session-id]')).toHaveCount(100)
+    await search.fill('旧关键词不会保留')
+    await search.fill('杭州西湖')
+    await expect(chatSearchStatus(page)).toHaveText('找到 1 个对话')
+    await expect(page.locator('[data-session-id]')).toHaveAttribute(
+      'data-session-id',
+      'search-seed-3'
+    )
+    await search.fill('BUND 夜景')
+    await expect(chatSearchStatus(page)).toHaveText('找到 1 个对话')
+    await expect(page.locator('[data-session-id]')).toHaveAttribute(
+      'data-session-id',
+      'search-seed-2'
+    )
+    await expect(page.locator('[data-session-id]')).toContainText('the Bund')
+    await page.screenshot({ path: `test-results/chat-search-${width}.png` })
+    await page.locator('[data-session-id]').click()
+    await expect(
+      page.locator('main').getByText('请游览 the Bund，外滩夜景', { exact: true })
+    ).toBeVisible()
+    expect(await page.evaluate(() => window.AndroidTest.requests.length)).toBe(0)
+  })
+}
+
+test('chat search refreshes after renaming and deleting records and can retry a blocked worker', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 1000 })
+  await seedSearchHistory(page, 4)
+  let blockWorkers = true
+  await page.route('**/chat-search*.js', async (route) => {
+    if (blockWorkers) {
+      await route.abort()
+    } else {
+      await route.fallback()
+    }
+  })
+  const search = page.getByRole('searchbox', { name: '搜索对话名称或内容' })
+  await search.fill('归档对话')
+  await expect(chatSearchStatus(page)).toHaveText('搜索失败，请重试')
+  blockWorkers = false
+  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(chatSearchStatus(page)).toHaveText('找到 3 个对话')
+  await page.locator('[data-session-id="search-seed-1"]').hover()
+  await page
+    .locator('[data-session-id="search-seed-1"]')
+    .getByRole('button', { name: '更多' })
+    .click()
+  await page.getByText('重命名', { exact: true }).click()
+  await page.getByRole('textbox', { name: '重命名', exact: true }).fill('独立名称')
+  await page.getByRole('textbox', { name: '重命名', exact: true }).press('Enter')
+  await expect(chatSearchStatus(page)).toHaveText('找到 2 个对话')
+  await page.locator('[data-session-id="search-seed-2"]').hover()
+  await page
+    .locator('[data-session-id="search-seed-2"]')
+    .getByRole('button', { name: '更多' })
+    .click()
+  await page.getByText('删除', { exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click()
+  await expect(chatSearchStatus(page)).toHaveText('找到 1 个对话')
+  await page.getByRole('button', { name: '清空对话搜索' }).click()
+  await expect(page.locator('[data-session-id]')).toHaveCount(3)
+})
+
+test('large history search keeps the UI thread drawing frames during database reads and matching', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 1000 })
+  await seedSearchHistory(page, 1200)
+  await page.getByRole('searchbox', { name: '搜索对话名称或内容' }).fill('上海')
+  const frames = await page.evaluate(async () => {
+    const times: number[] = []
+    const start = performance.now()
+    while (performance.now() - start < 1200) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      times.push(performance.now())
+    }
+    return times
+  })
+  await expect(chatSearchStatus(page)).toHaveText('找到 2 个对话')
+  expect(frames.length).toBeGreaterThan(20)
+  expect(Math.max(...frames.slice(1).map((time, index) => time - frames[index]))).toBeLessThan(200)
 })

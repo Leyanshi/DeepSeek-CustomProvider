@@ -266,9 +266,9 @@ async function* streamMessageOnce(
 export async function* streamMessage(
   apiKey: string,
   body: CreateMessageRequest,
-  signal: AbortSignal
+  signal: AbortSignal,
+  baseUrl = useSettings.getState().baseUrl
 ): AsyncGenerator<MessageStreamEvent> {
-  const baseUrl = useSettings.getState().baseUrl
   const generation = modelCapabilitiesGeneration()
   let candidate = withoutUnsupportedThinking(baseUrl, body)
   for (let attempt = 0; ; attempt++) {

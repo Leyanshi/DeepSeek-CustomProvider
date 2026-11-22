@@ -33,6 +33,15 @@ interface ChatDB extends DBSchema {
 
 let dbPromise: Promise<IDBPDatabase<ChatDB>> | null = null
 
+const searchListeners = new Set<() => void>()
+export const subscribeSearchChanges = (listener: () => void) => {
+  searchListeners.add(listener)
+  return () => {
+    searchListeners.delete(listener)
+  }
+}
+const notifySearchChanges = () => searchListeners.forEach((listener) => listener())
+
 const storedSummary = (session: Session): StoredSessionSummary => ({
   ...toSessionSummary(session),
   fileIds: [
@@ -81,6 +90,14 @@ export const loadSessionSummaries = async (): Promise<SessionSummary[]> =>
 export const loadSession = async (id: string): Promise<Session | undefined> =>
   (await getDB()).get('sessions', id)
 
+/** Used inside search workers only; bounded batches keep large histories out of UI memory. */
+export const loadSearchBatch = async (ids: string[]): Promise<(Session | undefined)[]> => {
+  const tx = (await getDB()).transaction('sessions', 'readonly')
+  const sessions = await Promise.all(ids.map((id) => tx.store.get(id)))
+  await tx.done
+  return sessions
+}
+
 export const saveSession = async (session: Session, files: StoredFile[] = []): Promise<void> => {
   const summary = storedSummary(session)
   const tx = (await getDB()).transaction(['sessions', 'sessionSummaries', 'files'], 'readwrite')
@@ -99,6 +116,7 @@ export const saveSession = async (session: Session, files: StoredFile[] = []): P
     })(),
     tx.done,
   ])
+  notifySearchChanges()
 }
 
 /** 未打开的会话也可重命名，只读取该会话，原子更新详情和列表。 */
@@ -121,6 +139,7 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
     })(),
     tx.done,
   ])
+  notifySearchChanges()
 }
 
 /** 删除会话，仅清理已无会话引用的本地原件；远端文件不删。 */
@@ -145,6 +164,7 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
     })(),
     tx.done,
   ])
+  notifySearchChanges()
 }
 
 const putFiles = async (store: 'files' | 'filesStaging', files: StoredFile[]) => {
@@ -240,6 +260,7 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
     }
   }
   await Promise.all([move('sessionsStaging', 'sessions'), move('filesStaging', 'files'), tx.done])
+  notifySearchChanges()
   // 直接返回本次提交的列表，调用方无需在替换成功后再发起可能失败的读取。
   return summaries
 }

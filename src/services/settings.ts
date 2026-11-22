@@ -41,6 +41,7 @@ type Settings = {
   grokSearch: GrokSearchConfig
   webFetch: boolean
   siderCollapsed: boolean
+  autoTitle: boolean
 }
 
 const KEYS = {
@@ -59,6 +60,7 @@ const KEYS = {
   grokSearch: 'chat-demo:grok-search',
   webFetch: 'chat-demo:web-fetch',
   siderCollapsed: 'chat-demo:sider-collapsed',
+  autoTitle: 'chat-demo:auto-title',
 } as const
 
 const read = (key: string) => {
@@ -177,6 +179,7 @@ export const useSettings = create<Settings>(() => ({
   grokSearch: initialGrokSearch(),
   webFetch: read(KEYS.webFetch) !== 'false',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
+  autoTitle: read(KEYS.autoTitle) !== 'false',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -245,4 +248,9 @@ export const setWebSettings = (
 export const setSiderCollapsed = (siderCollapsed: boolean) => {
   write(KEYS.siderCollapsed, String(siderCollapsed))
   useSettings.setState({ siderCollapsed })
+}
+
+export const setAutoTitle = (autoTitle: boolean) => {
+  write(KEYS.autoTitle, String(autoTitle))
+  useSettings.setState({ autoTitle })
 }

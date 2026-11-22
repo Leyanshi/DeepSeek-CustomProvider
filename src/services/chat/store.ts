@@ -17,6 +17,7 @@ import {
   prepareDraftMessage,
 } from './drafts.js'
 import { createLatestReminder } from './latestReminder.js'
+import { generateTitle } from './title.js'
 import {
   applyEvent,
   canContinueReply,
@@ -34,19 +35,32 @@ import {
   type UserMessage,
 } from './types.js'
 
-/** 所有生成请求统一携带的助手身份说明 */
+/** 聊天生成请求统一携带的助手身份说明 */
 const SYSTEM_PROMPT = '该助手为DeepSeek，由深度求索公司创造。'
 /** 保留最近打开的详情；当前会话、生成中及尚未成功保存的会话不淘汰。 */
 const SESSION_CACHE_LIMIT = 5
-/** 安全审核固定开启，所有请求都走扩展模式 */
+/** 聊天请求固定走扩展模式 */
 const SAFETY_CHECK = { level: 'high' } as const
 /** 服务端判定 file_id 失效后，重新补传并重发的最多次数（不含首次请求） */
 const FILE_RETRY_LIMIT = 2
 /** 退避基数，第 n 次重试等待 2^n 倍；连续失败达到上限就放弃，把原始报错展示出来 */
 const FILE_RETRY_BASE_DELAY = 1000
 
-/** 允许自动补标题的请求；手动重命名后取消本轮标题写入，包含主动清空标题的情况。 */
-const titleRequests = new Set<AbortController>()
+/** Independent requests are cancelled before rename/delete/import or disabling automatic titles. */
+const titleRequests = new Map<string, AbortController>()
+
+const cancelTitle = (id: string) => {
+  titleRequests.get(id)?.abort()
+  titleRequests.delete(id)
+}
+
+useSettings.subscribe((state) => {
+  if (!state.autoTitle) {
+    for (const id of titleRequests.keys()) {
+      cancelTitle(id)
+    }
+  }
+})
 
 type ChatState = {
   ready: boolean
@@ -119,6 +133,7 @@ const trimSessionCache = () => {
       (id) =>
         id !== state.activeId &&
         !Object.hasOwn(state.streaming, id) &&
+        !titleRequests.has(id) &&
         !unsavedSessions.has(id) &&
         !deletingSessions.has(id)
     )
@@ -384,6 +399,9 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
   }
   set({ importingHistory: true })
   try {
+    for (const id of titleRequests.keys()) {
+      cancelTitle(id)
+    }
     for (const controller of Object.values(get().streaming)) {
       controller.abort()
     }
@@ -449,10 +467,7 @@ export const renameSession = (id: string, title: string) => {
   if (get().importingHistory || deletingSessions.has(id)) {
     return
   }
-  const controller = getStreamController(id)
-  if (controller) {
-    titleRequests.delete(controller)
-  }
+  cancelTitle(id)
   if (getSession(id)) {
     updateSession(id, (session) => ({ ...session, title }))
     persist(id)
@@ -483,6 +498,7 @@ const removeSessionData = async (id: string): Promise<boolean> => {
   const epoch = historyEpoch
   deletingSessions.add(id)
   try {
+    cancelTitle(id)
     getStreamController(id)?.abort()
     // 等本会话的流收尾，避免删除之后又被收尾保存写回来。
     await waitForIdle(id)
@@ -528,7 +544,60 @@ const removeSessionData = async (id: string): Promise<boolean> => {
   }
 }
 
-export const stopReply = (sessionId: string) => getStreamController(sessionId)?.abort()
+export const stopReply = (sessionId: string) => {
+  getStreamController(sessionId)?.abort()
+  cancelTitle(sessionId)
+}
+
+const startTitle = async (sessionId: string, firstMessage: UserMessage) => {
+  const settings = useSettings.getState()
+  if (!settings.autoTitle || !settings.apiKey) {
+    return
+  }
+  const connection = { ...settings, apiKey: settings.apiKey }
+  const epoch = historyEpoch
+  const controller = new AbortController()
+  titleRequests.set(sessionId, controller)
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const images: InlineImageBlockParam[] = []
+    // A message with only images can still have a meaningful title using the same multimodal format.
+    if (!firstMessage.content.trim()) {
+      for (const file of firstMessage.files.filter((file) => file.isImage)) {
+        const blob =
+          pendingFiles.get(sessionId)?.find((stored) => stored.id === file.id)?.blob ??
+          (await db.loadFile(file.id))
+        if (blob) {
+          images.push(await inlineImage(blob, file.name, file.mimeType, controller.signal))
+        }
+      }
+    }
+    controller.signal.throwIfAborted()
+    const title = await generateTitle(firstMessage, connection, controller.signal, images)
+    if (
+      title &&
+      !controller.signal.aborted &&
+      titleRequests.get(sessionId) === controller &&
+      epoch === historyEpoch &&
+      !get().importingHistory &&
+      !deletingSessions.has(sessionId) &&
+      useSettings.getState().autoTitle &&
+      !getSession(sessionId)?.title
+    ) {
+      updateSession(sessionId, (session) => ({ ...session, title }))
+      persist(sessionId)
+    }
+  } catch {
+    // Failure leaves the localized "New chat" fallback and never interrupts a reply.
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
+    if (titleRequests.get(sessionId) === controller) {
+      titleRequests.delete(sessionId)
+    }
+    trimSessionCache()
+  }
+}
 
 /**
  * 提交指定会话的最新草稿；null 表示新建会话。
@@ -601,6 +670,9 @@ export const sendMessage = (targetSessionId: string | null) => {
   persist(sessionId)
   clearSentDraft(targetSessionId)
   void streamReply(sessionId, reply, { history, question })
+  if (current.messages.length === 0) {
+    void startTitle(sessionId, question)
+  }
   return true
 }
 
@@ -978,9 +1050,6 @@ const waitForRetry = (attempt: number, signal: AbortSignal) =>
  */
 const streamReply = async (sessionId: string, initial: AssistantMessage, request: Request) => {
   const controller = new AbortController()
-  if (!getSession(sessionId)?.title) {
-    titleRequests.add(controller)
-  }
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
   let reply = initial
   let webContext: Awaited<ReturnType<typeof prepareWebContext>> | undefined
@@ -1042,25 +1111,12 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,
             tools: [],
-            ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
           },
           controller.signal
         )
         const blockIndexes = new Map<number, number>()
         for await (const event of events) {
           receivedContent ||= event.type === 'content_block_start'
-          if (
-            event.type === 'message_delta' &&
-            (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'max_tokens') &&
-            event.delta.title?.trim() &&
-            titleRequests.has(controller) &&
-            !controller.signal.aborted &&
-            !get().importingHistory
-          ) {
-            const title = event.delta.title.trim()
-            updateSession(sessionId, (session) => (session.title ? session : { ...session, title }))
-            titleRequests.delete(controller)
-          }
           reply = applyEvent(reply, event, Date.now(), blockIndexes)
           if (document.visibilityState === 'hidden') {
             flush()
@@ -1117,7 +1173,6 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       }
     }
   } finally {
-    titleRequests.delete(controller)
     streamFlushes.delete(sessionId)
     cancelAnimationFrame(frame)
     updateReply(sessionId, reply)

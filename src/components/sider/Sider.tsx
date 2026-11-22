@@ -147,17 +147,29 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   )
 }
 
-/** 移动端抽屉：浮在页面上方，点空白区域关闭。 */
+/** 保留抽屉外层以播放进出过渡，退出结束后卸载会话列表。 */
 export const MobileSider = () => {
   const open = useMobileSider((state) => state.open)
-  if (!open) {
-    return null
-  }
+  const [rendered, setRendered] = useState(open)
+  useEffect(() => {
+    if (open) {
+      setRendered(true)
+      return
+    }
+    // Match the 300 ms CSS transition; reopening cancels this pending unmount.
+    const timer = setTimeout(() => setRendered(false), 300)
+    return () => clearTimeout(timer)
+  }, [open])
   return (
     <>
-      <div data-android-back className={styles.drawerMask} onClick={closeMobileSider} />
-      <div className={styles.drawer}>
-        <Sider mobile />
+      <div
+        data-android-back={open ? '' : undefined}
+        aria-hidden="true"
+        className={clsx(styles.drawerMask, open && styles.drawerOpen)}
+        onClick={closeMobileSider}
+      />
+      <div aria-hidden={!open} className={clsx(styles.drawer, open && styles.drawerOpen)}>
+        {open || rendered ? <Sider mobile /> : null}
       </div>
     </>
   )

@@ -34,6 +34,8 @@
 3. 在「聊天模型」中获取模型列表并选择，或手动填写自定义模型 ID，再点击「确定」。
 4. 在「联网与语音」中设置 Search/Fetch 和语音服务，可跟随聊天连接或使用独立服务；OpenAI 兼容语音可自定义 TTS 模型、识别模型和音色 ID。
 
+v0.1.13 为手机左上角会话侧栏增加约 300 毫秒的滑入、滑出动画，背景遮罩同步淡入、淡出。点空白处、选择会话或按 Android 返回键都会平滑关闭；系统启用减少动画时关闭过渡。没有增加依赖。
+
 v0.1.12 在「联网与语音 → 联网 API 来源」新增 **GrokSearch-rs (MCP)**。通过远程 Streamable HTTP 调用 `web_search` 和 `web_fetch`，将 Grok 整理摘要、来源链接和抓取的 Markdown 保留到聊天上下文与历史中。默认完整地址为 [GrokSearch-rs](https://github.com/Episkey-G/GrokSearch-rs) 公布的 `https://mcp.episkeyai.com/groksearch_rs/mcp`，也可填写自建 HTTPS MCP 地址。填写 Grok API Key，可选填与 Key 配套的 Grok 网关和搜索模型 ID；网关留空使用服务默认地址（通常为 xAI），模型留空使用服务默认模型。普通网页读取需要 Tavily、Exa、TinyFish 或 Firecrawl 来源 Key；GitHub、Wikipedia、arXiv 等专用读取器可免来源 Key。这些 Key 会提交给所填 MCP 服务，由它调用上游，不会自动沿用聊天 Key。手机无需安装 Rust 服务或额外 SDK。旧用户仍默认使用 DeepSeek，切换来源保留各自已保存的配置。
 
 v0.1.11 支持图片直接放进聊天请求，实际调用 DeepSeek Search/Fetch 并将资料交给模型，修复 PCM/WAV/MP3 朗读和可配置的语音输入。模型声明或接口明确拒绝思考设置时，会自动省略不支持的参数。判断按地址与模型隔离，更换 Key 会清除旧判断并阻止旧请求迟到后重新写入；「数据管理」也提供手动重新检测入口。

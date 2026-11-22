@@ -6,7 +6,9 @@
 
 ## 安装
 
-将 `release/DeepSeek-Android-0.1.12.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，推荐较新的系统 WebView；已加入旧内核启动 API 和视口高度的兼容处理。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 10，可覆盖安装 0.1.3–0.1.11 并保留原有数据。
+将 `release/DeepSeek-Android-0.1.13.apk` 传到手机，打开并按系统提示允许该来源安装。支持 Android 8.0 及以上，推荐较新的系统 WebView；已加入旧内核启动 API 和视口高度的兼容处理。兼容 ARM、ARM64 和 x86，不包含专用的原生架构库。新版沿用原签名，versionCode 为 11，可覆盖安装 0.1.3–0.1.12 并保留原有数据。
+
+0.1.13 为手机左上角会话侧栏增加约 300 毫秒的滑入、滑出动画，背景遮罩同步淡入、淡出。点遮罩、收起按钮、选择会话或 Android 返回键均使用同一关闭动画；快速重新打开会取消待执行的卸载，动画从当前位置继续。系统启用减少动画时直接显示或隐藏。没有增加依赖或 Android 权限。
 
 0.1.12 新增 [GrokSearch-rs](https://github.com/Episkey-G/GrokSearch-rs) 搜索与 Fetch 来源：
 
@@ -91,7 +93,7 @@ corepack pnpm test:android
 验证已打包的 APK 时，直接从 APK 读取网页资源再运行相同的手机尺寸测试：
 
 ```powershell
-$env:DS_ANDROID_TEST_APK = 'release/DeepSeek-Android-0.1.12.apk'
+$env:DS_ANDROID_TEST_APK = 'release/DeepSeek-Android-0.1.13.apk'
 corepack pnpm exec playwright test
 Remove-Item Env:DS_ANDROID_TEST_APK
 ```

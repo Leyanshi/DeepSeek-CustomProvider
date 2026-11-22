@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { isAndroidApp, saveAndroidFile } from '../../services/android.js'
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconDarkOutline16,
   IconDataOutline16,
@@ -44,7 +44,17 @@ import styles from './Settings.module.css'
  */
 export const SettingsDialog = () => {
   const open = useSettingsDialog((state) => state.open)
-  return open ? <SettingsContent /> : null
+  const instance = useSettingsDialog((state) => state.instance)
+  const [rendered, setRendered] = useState(open)
+  useEffect(() => {
+    if (open) {
+      setRendered(true)
+      return
+    }
+    const timer = setTimeout(() => setRendered(false), 300)
+    return () => clearTimeout(timer)
+  }, [open])
+  return open || rendered ? <SettingsContent key={instance} open={open} /> : null
 }
 
 const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode }[] = [
@@ -57,7 +67,7 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
   { value: 'services', label: 'settingsServices', icon: <IconSettingsOutline16 /> },
 ]
 
-const SettingsContent = () => {
+const SettingsContent = ({ open }: { open: boolean }) => {
   const t = useTranslate()
   // 打开时按调用方指定的分组选中，之后在弹窗内切换
   const [section, setSection] = useState(() => useSettingsDialog.getState().section)
@@ -70,6 +80,8 @@ const SettingsContent = () => {
   return (
     <>
       <Modal
+        open={open}
+        animated
         title={t('settings')}
         closable
         className={styles.dialog}

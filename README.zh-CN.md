@@ -34,7 +34,7 @@
 3. 在「聊天模型」中获取模型列表并选择，或手动填写自定义模型 ID，再点击「确定」。
 4. 在「联网与语音」中设置 Search/Fetch 和语音服务，可跟随聊天连接或使用独立服务；OpenAI 兼容语音可自定义 TTS 模型、识别模型和音色 ID。
 
-v0.1.14 补齐宽度达到 768px 时的宽屏侧栏动画，覆盖平板和手机横屏：侧栏平滑滑入、滑出，聊天区域同步调整，保留宽屏常驻布局和收起状态记忆。v0.1.13 已加入窄屏抽屉动画及遮罩淡化；两种布局都遵循系统减少动画设置。没有增加依赖。
+v0.1.15 在新对话欢迎语上方居中显示内置 DeepSeek LOGO，手机和平板均可见。同时增加设置动画：手机窄屏从底部滑入、滑出，平板和手机横屏使用轻微缩放与淡化，遮罩同步淡入、淡出，退出结束后再移除界面。重新打开会初始化编辑状态，保留确认弹窗的返回优先级并遵循系统减少动画设置。v0.1.14 已补齐平板及手机横屏的侧栏动画，v0.1.13 已加入窄屏抽屉动画。没有增加动画依赖。
 
 v0.1.12 在「联网与语音 → 联网 API 来源」新增 **GrokSearch-rs (MCP)**。通过远程 Streamable HTTP 调用 `web_search` 和 `web_fetch`，将 Grok 整理摘要、来源链接和抓取的 Markdown 保留到聊天上下文与历史中。默认完整地址为 [GrokSearch-rs](https://github.com/Episkey-G/GrokSearch-rs) 公布的 `https://mcp.episkeyai.com/groksearch_rs/mcp`，也可填写自建 HTTPS MCP 地址。填写 Grok API Key，可选填与 Key 配套的 Grok 网关和搜索模型 ID；网关留空使用服务默认地址（通常为 xAI），模型留空使用服务默认模型。普通网页读取需要 Tavily、Exa、TinyFish 或 Firecrawl 来源 Key；GitHub、Wikipedia、arXiv 等专用读取器可免来源 Key。这些 Key 会提交给所填 MCP 服务，由它调用上游，不会自动沿用聊天 Key。手机无需安装 Rust 服务或额外 SDK。旧用户仍默认使用 DeepSeek，切换来源保留各自已保存的配置。
 
@@ -118,7 +118,7 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm test:android`         | 手机尺寸界面与桥接测试       |
 | `pnpm format`               | oxfmt 格式化                 |
 
-CI 执行类型检查、代码检查、模型及 GrokSearch 解析、前端与原生 URL 测试、Android 资源打包、更新逻辑测试及网页构建。37 项手机/平板界面测试使用已有的 Microsoft Edge 模拟 Android 桥接和麦克风输入，覆盖图片历史、Search/Fetch、语音配置与 PCM/WAV 播放、换模型/Key 后思考重新检测等场景。侧栏检查覆盖五种宽度的实际动画中间位置、布局变化、减少动画与收起状态保存。GrokSearch 测试覆盖 JSON/SSE、MCP 初始化与会话、独立凭据、切换来源、历史、失败与取消；另有 6 项协议测试验证响应和来源输出。测试不安装模拟器或测试浏览器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径和缺失或过期资源；22 项 JDK 检查覆盖更新版本比较、静默失败和长中文日志。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试或使用真实 Key 的 Grok 联调。
+CI 执行类型检查、代码检查、模型及 GrokSearch 解析、前端与原生 URL 测试、Android 资源打包、更新逻辑测试及网页构建。43 项手机/平板界面测试使用已有的 Microsoft Edge 模拟 Android 桥接和麦克风输入，覆盖图片历史、Search/Fetch、语音配置与 PCM/WAV 播放、换模型/Key 后思考重新检测等场景。侧栏与设置检查覆盖五种宽度的实际动画中间位置、布局变化、减少动画、收起状态保存、草稿重置及叠加确认弹窗。GrokSearch 测试覆盖 JSON/SSE、MCP 初始化与会话、独立凭据、切换来源、历史、失败与取消；另有 6 项协议测试验证响应和来源输出。测试不安装模拟器或测试浏览器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径和缺失或过期资源；22 项 JDK 检查覆盖更新版本比较、静默失败和长中文日志。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试或使用真实 Key 的 Grok 联调。
 
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 

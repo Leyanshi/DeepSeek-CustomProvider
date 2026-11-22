@@ -16,11 +16,27 @@
   padding: 0 32px 64px;
 }
 
+.intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  margin-bottom: 21px;
+}
+
+.logo {
+  display: block;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  object-fit: contain;
+}
+
 .greeting {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 21px;
   font-size: 24px;
   line-height: 32px;
   font-weight: 600;
@@ -50,9 +66,14 @@
     padding: 0 16px env(safe-area-inset-bottom);
   }
 
-  .greeting {
+  .intro {
     flex-shrink: 0;
     margin: auto 0;
+  }
+
+  .logo {
+    width: 56px;
+    height: 56px;
   }
 
   .caveat {

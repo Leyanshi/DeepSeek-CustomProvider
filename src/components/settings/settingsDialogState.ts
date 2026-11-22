@@ -8,10 +8,16 @@ export type SettingsSection = 'general' | 'services' | 'data'
 export const useSettingsDialog = create(() => ({
   open: false,
   section: 'general' as SettingsSection,
+  instance: 0,
 }))
 
 export const openSettings = (section: SettingsSection) =>
-  useSettingsDialog.setState({ open: true, section })
+  useSettingsDialog.setState((state) => ({
+    open: true,
+    section,
+    // A fresh editor on reopening keeps unsaved drafts from a dismissed dialog.
+    instance: state.open ? state.instance : state.instance + 1,
+  }))
 
 export const closeSettings = () => useSettingsDialog.setState({ open: false })
 

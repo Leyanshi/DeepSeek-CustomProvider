@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslate } from '../../i18n/index.js'
 import { IconCloseOutline16 } from './icons.js'
@@ -17,6 +17,8 @@ export const Modal = ({
   closable = false,
   className,
   mainClassName,
+  open = true,
+  animated = false,
   onClose,
 }: {
   title: ReactNode
@@ -27,13 +29,36 @@ export const Modal = ({
   className?: string
   /** 内容区的 class */
   mainClassName?: string
+  /** Controlled visibility for callers that retain content during the closing animation. */
+  open?: boolean
+  animated?: boolean
   onClose: () => void
 }) => {
   const t = useTranslate()
   const titleId = useId()
+  const [entered, setEntered] = useState(false)
+  const visible = open && (!animated || entered)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   useEffect(() => {
+    if (!open || !animated) {
+      setEntered(false)
+      return
+    }
+    let secondFrame = 0
+    // Paint the initial state before starting the transition, including on older WebViews.
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setEntered(true))
+    })
+    return () => {
+      cancelAnimationFrame(firstFrame)
+      cancelAnimationFrame(secondFrame)
+    }
+  }, [open, animated])
+  useEffect(() => {
+    if (!open) {
+      return
+    }
     const token = {}
     openModals.push(token)
     const onKeyDown = (event: KeyboardEvent) => {
@@ -46,17 +71,18 @@ export const Modal = ({
       openModals.splice(openModals.indexOf(token), 1)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [open])
 
   return createPortal(
     <div
-      className={styles.overlay}
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      className={clsx(styles.overlay, animated && styles.animated, visible && styles.visible)}
+      aria-hidden={!open}
+      onMouseDown={(event) => open && event.target === event.currentTarget && onClose()}
     >
       <div
         className={clsx(styles.content, className)}
-        role="dialog"
-        aria-modal="true"
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? true : undefined}
         aria-labelledby={titleId}
       >
         <div className={styles.header}>

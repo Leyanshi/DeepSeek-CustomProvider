@@ -337,6 +337,7 @@
 
 @media not all and (min-width: 768px) {
   .dialog {
+    --modal-enter-transform: translateY(100%);
     align-self: flex-end;
     width: 100%;
     max-width: none;

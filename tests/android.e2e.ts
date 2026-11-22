@@ -548,7 +548,133 @@ for (const viewport of [
     await page.getByRole('button', { name: '发送', exact: true }).click()
     await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
   })
+
+  test(`settings animates in and out at ${viewport.width}px and resets dismissed drafts`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.setViewportSize(viewport)
+    if (viewport.width < 768) {
+      await page.getByRole('button', { name: '打开边栏', exact: true }).click()
+    }
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+
+    const animate = (action: 'open' | 'close' | 'escape' | 'backdrop') =>
+      page.evaluate(async (action) => {
+        let panel = document.querySelector<HTMLElement>('[role="dialog"]')
+        if (action === 'open') {
+          const settings = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+            (button) => button.textContent?.trim() === '设置'
+          )
+          if (!settings) {
+            throw new Error('Settings button missing')
+          }
+          settings.click()
+        } else {
+          if (!panel) {
+            throw new Error('Settings dialog missing')
+          }
+          if (action === 'escape') {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+          } else if (action === 'backdrop') {
+            panel.parentElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+          } else {
+            panel.querySelector<HTMLButtonElement>('[aria-label="关闭"]')?.click()
+          }
+        }
+        const frames: {
+          opacity: number
+          top: number
+          height: number
+          width: number
+          connected: boolean
+        }[] = []
+        const start = performance.now()
+        do {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          panel ??= document.querySelector<HTMLElement>('[role="dialog"]')
+          const overlay = panel?.parentElement
+          if (panel && overlay && panel.isConnected) {
+            const rect = panel.getBoundingClientRect()
+            frames.push({
+              opacity: Number(getComputedStyle(overlay).opacity),
+              top: rect.top,
+              height: rect.height,
+              width: rect.width,
+              connected: true,
+            })
+          } else {
+            frames.push({ opacity: 0, top: 0, height: 0, width: 0, connected: false })
+          }
+        } while (performance.now() - start < 450)
+        return frames
+      }, action)
+
+    const opened = await animate('open')
+    expect(opened.some((frame) => frame.opacity > 0.01 && frame.opacity < 0.99)).toBe(true)
+    expect(opened.at(-1)?.opacity).toBe(1)
+    const visible = opened.at(-1)
+    if (!visible) {
+      throw new Error('Animation frames missing')
+    }
+    if (viewport.width < 768) {
+      expect(opened.some((frame) => frame.connected && frame.top > visible.top + 10)).toBe(true)
+    } else {
+      expect(opened.some((frame) => frame.connected && frame.width < visible.width - 1)).toBe(true)
+    }
+    await page.screenshot({ path: `test-results/settings-${viewport.width}.png` })
+    await page.getByRole('tab', { name: '数据管理' }).click()
+    await page.getByLabel('Base URL', { exact: true }).fill('https://unsaved-settings.example')
+    const closed = await animate('close')
+    expect(closed.some((frame) => frame.opacity > 0.01 && frame.opacity < 0.99)).toBe(true)
+    expect(closed.at(-1)?.connected).toBe(false)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await animate('open')
+    await page.getByRole('tab', { name: '数据管理' }).click()
+    await expect(page.getByLabel('Base URL', { exact: true })).toHaveValue(
+      'https://api.deepseek.com'
+    )
+    const escape = await animate('escape')
+    expect(escape.some((frame) => frame.opacity > 0.01 && frame.opacity < 0.99)).toBe(true)
+    expect(escape.at(-1)?.connected).toBe(false)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const reduced = await animate('open')
+    expect(reduced.some((frame) => frame.opacity > 0.01 && frame.opacity < 0.99)).toBe(false)
+    expect(reduced.at(-1)?.opacity).toBe(1)
+    await animate('backdrop')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
 }
+
+test('settings dismissal respects the top confirmation and reopening during exit stays usable', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: '打开边栏', exact: true }).click()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('tab', { name: '数据管理' }).click()
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await expect(page.getByRole('tab', { name: '数据管理' })).toHaveAttribute('aria-selected', 'true')
+  await page.evaluate(async () => {
+    document.querySelector<HTMLButtonElement>('[role="dialog"] [aria-label="关闭"]')?.click()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const settings = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent?.trim() === '设置'
+    )
+    settings?.click()
+  })
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await page.getByRole('tab', { name: '联网与语音' }).click()
+  await expect(page.getByRole('button', { name: '保存联网设置' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', { name: '收起边栏', exact: true }).click()
+  await page.locator('textarea').fill('关闭设置后继续聊天')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await expect(page.getByText('安卓聊天验证成功。', { exact: true })).toBeVisible()
+})
 
 test('Android mobile chat, binary upload, export, theme and browser links', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.AndroidTest.readyCalls)).toBe(1)

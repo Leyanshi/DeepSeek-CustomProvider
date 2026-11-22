@@ -3,6 +3,14 @@ import { androidFetch, isAndroidApp } from '../android.js'
 import { useSettings } from '../settings.js'
 import { resolveApiUrl } from './baseUrl.js'
 import { parseModels, type ApiModel } from './models.js'
+import {
+  detectUnsupportedThinking,
+  modelCapabilitiesGeneration,
+  rememberModelCapabilities,
+  rememberUnsupportedThinking,
+  removeUnsupportedThinking,
+  withoutUnsupportedThinking,
+} from './modelCapabilities.js'
 import { resizeUploadImage } from '../../utils/resizeUploadImage.js'
 import { readMessageEvent } from './parseEvent.js'
 import { readServerSentEvents } from './sse.js'
@@ -35,7 +43,8 @@ export class ApiError extends Error {
   constructor(
     readonly kind: ApiErrorKind,
     message: string | TranslationMessage,
-    readonly status?: number
+    readonly status?: number,
+    readonly parameter?: string
   ) {
     super(typeof message === 'string' ? message : translate(message.key, message.params))
     this.name = 'ApiError'
@@ -56,15 +65,17 @@ const readErrorResponse = async (
 ): Promise<ApiError> => {
   const text = await response.text().catch(() => '')
   let message = text || fallback
+  let parameter: string | undefined
   try {
     const body: unknown = JSON.parse(text)
     if (isErrorBody(body)) {
       message = body.error.message
+      parameter = body.error.param ?? undefined
     }
   } catch {
     // 非 JSON 响应体直接展示原文
   }
-  return new ApiError(kind, message, response.status)
+  return new ApiError(kind, message, response.status, parameter)
 }
 
 export const request = async (
@@ -104,15 +115,25 @@ export const verifyApiKey = async (
   signal?: AbortSignal,
   baseUrl?: string
 ): Promise<void> => {
-  await request(
+  const connection = baseUrl ?? useSettings.getState().baseUrl
+  const generation = modelCapabilitiesGeneration()
+  const response = await request(
     '/models',
     {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}`, ...anthropicHeaders(apiKey, false) },
       signal,
     },
-    baseUrl
+    connection
   )
+  try {
+    const models = parseModels(await response.json())
+    if (useSettings.getState().apiKey === apiKey) {
+      rememberModelCapabilities(connection, models, generation)
+    }
+  } catch {
+    /* Verification only needs a successful status. */
+  }
 }
 
 /** Fetch the model catalog using the entered connection without changing settings. */
@@ -121,6 +142,8 @@ export const fetchModels = async (
   signal?: AbortSignal,
   baseUrl?: string
 ): Promise<ApiModel[]> => {
+  const connection = baseUrl ?? useSettings.getState().baseUrl
+  const generation = modelCapabilitiesGeneration()
   const response = await request(
     '/models',
     {
@@ -128,10 +151,14 @@ export const fetchModels = async (
       headers: { Authorization: `Bearer ${apiKey}`, ...anthropicHeaders(apiKey, false) },
       signal,
     },
-    baseUrl
+    connection
   )
   try {
-    return parseModels(await response.json())
+    const models = parseModels(await response.json())
+    if (useSettings.getState().apiKey === apiKey) {
+      rememberModelCapabilities(connection, models, generation)
+    }
+    return models
   } catch (error) {
     if (signal?.aborted) {
       throw error
@@ -176,28 +203,33 @@ const hasFile = (body: CreateMessageRequest) =>
   body.messages.some(
     (message) =>
       typeof message.content !== 'string' &&
-      message.content.some((block) => block.type === 'image' || block.type === 'document')
+      message.content.some((block) => 'source' in block && block.source.type === 'file')
   )
 
 /**
  * POST /anthropic/v1/messages（stream: true），逐个产出流式事件，收到 message_stop 时结束。
  * ping、保活注释与无法解析的内容不产出；中止请求时抛出 signal 的 AbortError。
  */
-export async function* streamMessage(
+async function* streamMessageOnce(
   apiKey: string,
   body: CreateMessageRequest,
-  signal: AbortSignal
+  signal: AbortSignal,
+  baseUrl: string
 ): AsyncGenerator<MessageStreamEvent> {
-  const response = await request('/anthropic/v1/messages', {
-    method: 'POST',
-    headers: {
-      ...anthropicHeaders(apiKey, hasFile(body)),
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
+  const response = await request(
+    '/anthropic/v1/messages',
+    {
+      method: 'POST',
+      headers: {
+        ...anthropicHeaders(apiKey, hasFile(body)),
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify({ ...body, stream: true }),
+      signal,
     },
-    body: JSON.stringify({ ...body, stream: true }),
-    signal,
-  })
+    baseUrl
+  )
   const contentType = response.headers.get('Content-Type') ?? ''
   if (!response.body || !contentType.includes('text/event-stream')) {
     throw await readErrorResponse(response, 'protocol', '')
@@ -228,4 +260,44 @@ export async function* streamMessage(
   }
   // 服务端没有提供错误内容时保持为空，不推测断流原因。
   throw new ApiError('interrupted', '')
+}
+
+/** Retry once per explicitly rejected thinking field, before any generated content is received. */
+export async function* streamMessage(
+  apiKey: string,
+  body: CreateMessageRequest,
+  signal: AbortSignal
+): AsyncGenerator<MessageStreamEvent> {
+  const baseUrl = useSettings.getState().baseUrl
+  const generation = modelCapabilitiesGeneration()
+  let candidate = withoutUnsupportedThinking(baseUrl, body)
+  for (let attempt = 0; ; attempt++) {
+    let receivedContent = false
+    try {
+      for await (const event of streamMessageOnce(apiKey, candidate, signal, baseUrl)) {
+        receivedContent ||= event.type === 'content_block_start'
+        yield event
+      }
+      return
+    } catch (error) {
+      if (
+        signal.aborted ||
+        receivedContent ||
+        attempt >= 2 ||
+        !(error instanceof ApiError) ||
+        error.kind !== 'http'
+      ) {
+        throw error
+      }
+      const unsupported = detectUnsupportedThinking(error)
+      const removable =
+        (unsupported.thinking === false && candidate.thinking !== undefined) ||
+        (unsupported.effort === false && candidate.output_config?.effort !== undefined)
+      if (!removable) {
+        throw error
+      }
+      rememberUnsupportedThinking(baseUrl, candidate.model, unsupported, generation)
+      candidate = removeUnsupportedThinking(candidate, unsupported)
+    }
+  }
 }

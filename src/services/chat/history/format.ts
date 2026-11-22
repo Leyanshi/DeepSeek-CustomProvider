@@ -62,6 +62,8 @@ export type ChatMessage = {
   inserted_at: Iso8601Utc
   /** 按发生顺序排列 */
   fragments: Fragment[]
+  /** Optional CustomProvider extension; standard DeepSeek imports may omit it. */
+  custom_provider_web_context?: string
 }
 
 /** 用户的提问 */

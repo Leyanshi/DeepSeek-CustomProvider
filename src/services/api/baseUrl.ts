@@ -25,7 +25,7 @@ export const resolveApiUrl = (baseUrl: string, endpoint: string): string => {
   if (base.endsWith('/v1') && endpoint.startsWith('/anthropic/v1/')) {
     return base + endpoint.slice('/anthropic/v1'.length)
   }
-  if (endpoint.startsWith('/v1/tools/')) {
+  if (endpoint.startsWith('/v1/tools/') || endpoint.startsWith('/v1/audio/')) {
     if (base.endsWith('/anthropic/v1')) {
       return base.slice(0, -'/anthropic/v1'.length) + endpoint
     }

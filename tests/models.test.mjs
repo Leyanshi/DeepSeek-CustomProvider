@@ -1,6 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_MODEL, normalizeModelId, parseModels } from '../src/services/api/models.ts'
+import {
+  detectUnsupportedThinking,
+  modelCapabilitiesGeneration,
+  resetModelCapabilities,
+  rememberModelCapabilities,
+  rememberUnsupportedThinking,
+  withoutUnsupportedThinking,
+} from '../src/services/api/modelCapabilities.ts'
 
 test('reads OpenAI/DeepSeek catalogs and Anthropic display names', () => {
   assert.deepEqual(
@@ -67,4 +75,103 @@ test('custom IDs preserve provider paths, versions and case; invalid IDs are rej
   for (const id of ['', ' \n ', 'two models', 'model\nname', 'model\u0000name', 'x'.repeat(257)]) {
     assert.throws(() => normalizeModelId(id))
   }
+})
+
+test('uses explicit reasoning capabilities and leaves unknown custom models unknown', () => {
+  assert.deepEqual(
+    parseModels({
+      data: [
+        { id: 'no-reasoning', capabilities: { reasoning: false } },
+        { id: 'has-reasoning', supported_parameters: ['thinking', 'output_config.effort'] },
+        { id: 'no-effort', supports_thinking: true, supports_reasoning_effort: false },
+        { id: 'unknown', capabilities: ['image'], supported_parameters: 'invalid' },
+      ],
+    }),
+    [
+      { id: 'no-reasoning', name: 'no-reasoning', thinking: false },
+      { id: 'has-reasoning', name: 'has-reasoning', thinking: true, effort: true },
+      { id: 'no-effort', name: 'no-effort', thinking: true, effort: false },
+      { id: 'unknown', name: 'unknown' },
+    ]
+  )
+})
+
+test('recognizes unsupported settings but preserves validation and unrelated API errors', () => {
+  assert.deepEqual(
+    detectUnsupportedThinking({ status: 400, message: "Unsupported parameter 'thinking'" }),
+    { thinking: false }
+  )
+  assert.deepEqual(
+    detectUnsupportedThinking({
+      status: 422,
+      message: 'Extra inputs are not permitted',
+      parameter: 'thinking.type',
+    }),
+    { thinking: false }
+  )
+  assert.deepEqual(
+    detectUnsupportedThinking({ status: 400, message: 'reasoning_effort is not supported' }),
+    { effort: false }
+  )
+  assert.deepEqual(
+    detectUnsupportedThinking({ status: 400, message: '该模型不支持 thinking 设置' }),
+    { thinking: false }
+  )
+  for (const error of [
+    { status: 401, message: 'thinking is not supported' },
+    { status: 429, message: 'thinking is not supported' },
+    { status: 500, message: 'thinking is not supported' },
+    { status: 400, message: 'thinking.budget_tokens must be greater than 1024' },
+    { status: 400, message: 'Unsupported parameter temperature' },
+    { message: 'Unsupported parameter thinking' },
+  ]) {
+    assert.deepEqual(detectUnsupportedThinking(error), {})
+  }
+})
+
+test('removes unsupported thinking for both switch states and isolates each model and service', () => {
+  const base = 'https://provider-capability.example/v1'
+  rememberUnsupportedThinking(base, 'custom', { thinking: false })
+  for (const type of ['enabled', 'disabled']) {
+    const body = {
+      model: 'custom',
+      thinking: { type },
+      output_config: { effort: 'high' },
+      messages: ['question'],
+    }
+    assert.deepEqual(withoutUnsupportedThinking(base, body), {
+      model: 'custom',
+      messages: ['question'],
+    })
+    assert.equal(body.thinking.type, type)
+    assert.deepEqual(withoutUnsupportedThinking('https://another.example', body), body)
+    assert.deepEqual(withoutUnsupportedThinking(base, { ...body, model: 'other-model' }), {
+      ...body,
+      model: 'other-model',
+    })
+  }
+  rememberModelCapabilities(base, [{ id: 'custom', thinking: true, effort: false }])
+  assert.deepEqual(
+    withoutUnsupportedThinking(base, {
+      model: 'custom',
+      thinking: { type: 'enabled' },
+      output_config: { effort: 'max' },
+    }),
+    { model: 'custom', thinking: { type: 'enabled' } }
+  )
+})
+
+test('a key change clears old capabilities and prevents older in-flight requests restoring them', () => {
+  const base = 'https://key-change.example'
+  const body = { model: 'same-model', thinking: { type: 'enabled' } }
+  rememberUnsupportedThinking(base, body.model, { thinking: false })
+  assert.equal(withoutUnsupportedThinking(base, body).thinking, undefined)
+  const oldGeneration = modelCapabilitiesGeneration()
+  resetModelCapabilities()
+  assert.deepEqual(withoutUnsupportedThinking(base, body), body)
+  rememberUnsupportedThinking(base, body.model, { thinking: false }, oldGeneration)
+  rememberModelCapabilities(base, [{ id: body.model, thinking: false }], oldGeneration)
+  assert.deepEqual(withoutUnsupportedThinking(base, body), body)
+  rememberUnsupportedThinking(base, body.model, { thinking: false })
+  assert.equal(withoutUnsupportedThinking(base, body).thinking, undefined)
 })

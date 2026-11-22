@@ -1,6 +1,7 @@
 import type {
   AssistantBlockParam,
   FileBlockParam,
+  InlineImageBlockParam,
   MessageParam,
   MessageStreamEvent,
   OutputBlockStart,
@@ -14,22 +15,30 @@ import type {
   ReplyStatus,
   UserMessage,
 } from './types.js'
+import { isLocalWebTool, webContextText } from '../api/webContext.js'
 
 /**
  * 文件按 Files API 的 file_id（附件的 serverId）引用：图片用 image 块，其余用 document 块。
  * 发送前 streamReply 会先补齐 serverId；仍为 null 的是本地没有原件的附件，不进入请求。
  */
-const toFileBlocks = (files: FileAttachment[]): FileBlockParam[] =>
-  files.flatMap(({ serverId, isImage }) =>
-    serverId
+const toFileBlocks = (
+  files: FileAttachment[],
+  images: ReadonlyMap<string, InlineImageBlockParam>
+): (FileBlockParam | InlineImageBlockParam)[] =>
+  files.flatMap((file): (FileBlockParam | InlineImageBlockParam)[] => {
+    if (file.isImage) {
+      const image = images.get(file.id)
+      return image ? [image] : []
+    }
+    return file.serverId
       ? [
           {
-            type: isImage ? 'image' : 'document',
-            source: { type: 'file', file_id: serverId },
+            type: 'document',
+            source: { type: 'file', file_id: file.serverId },
           },
         ]
       : []
-  )
+  })
 
 const toReplyBlock = (block: OutputBlockStart, now: number): ReplyBlock | null => {
   switch (block.type) {
@@ -185,8 +194,7 @@ export const canContinueReply = (reply: AssistantMessage): boolean => {
     return false
   }
   return (
-    reply.status === 'stopped' ||
-    (reply.status === 'done' && reply.stopReason === 'max_tokens')
+    reply.status === 'stopped' || (reply.status === 'done' && reply.stopReason === 'max_tokens')
   )
 }
 
@@ -202,8 +210,11 @@ const isUsableReply = (message: Message): message is AssistantMessage =>
   getReplyText(message) !== ''
 
 /** 有文件时用内容块数组：先文件后文本，文件按 Files API 的 file_id 引用 */
-const toUserParam = ({ content, files }: UserMessage): MessageParam => {
-  const blocks = toFileBlocks(files)
+const toUserParam = (
+  { content, files }: UserMessage,
+  images: ReadonlyMap<string, InlineImageBlockParam>
+): MessageParam => {
+  const blocks = toFileBlocks(files, images)
   return blocks.length === 0
     ? { role: 'user', content }
     : {
@@ -240,6 +251,13 @@ const toAssistantParam = (
   /** 正在拼接的文本块；遇到任何非文本块（含不回传的思考块）就结束 */
   let text: TextBlockParam | null = null
   for (const block of blocks) {
+    if (
+      (block.type === 'server_tool_use' && isLocalWebTool(block.id)) ||
+      ((block.type === 'web_fetch_tool_result' || block.type === 'web_search_tool_result') &&
+        isLocalWebTool(block.tool_use_id))
+    ) {
+      continue
+    }
     // 空思考不改变续写位置，也不应把两段正文隔开，导致后端额外插入空行。
     if (prefix && block.type === 'thinking' && !block.thinking.trim()) {
       continue
@@ -305,7 +323,8 @@ export const toRequestMessages = (
   question: UserMessage,
   prefix?: AssistantMessage,
   thinking = prefix?.thinking ?? false,
-  latestReminder?: string
+  latestReminder?: string,
+  images: ReadonlyMap<string, InlineImageBlockParam> = new Map()
 ): MessageParam[] => {
   const messages: MessageParam[] = []
   let previousReminder: string | undefined
@@ -318,14 +337,27 @@ export const toRequestMessages = (
   }
   for (const [user, reply] of getContextRounds(history)) {
     // 历史提问没有文字、附件也都没有 serverId 时，提问为空，连同回答一起省略。
-    if (!user.content && toFileBlocks(user.files).length === 0) {
+    if (!user.content && toFileBlocks(user.files, images).length === 0) {
       continue
     }
     appendReminder(reply.latestReminder)
-    messages.push(toUserParam(user), toAssistantParam(reply))
+    const context =
+      reply.webContext ??
+      webContextText(
+        reply.blocks.filter(
+          (block) =>
+            block.type === 'server_tool_use' ||
+            block.type === 'web_search_tool_result' ||
+            block.type === 'web_fetch_tool_result'
+        )
+      )
+    messages.push(
+      toUserParam({ ...user, content: user.content + context }, images),
+      toAssistantParam(reply)
+    )
   }
   appendReminder(latestReminder)
-  messages.push(toUserParam(question))
+  messages.push(toUserParam(question, images))
   if (prefix?.prefix) {
     const assistant = toAssistantParam(prefix, true, thinking)
     // 没有非空白正文或有效思考时直接重发原问题，避免服务端拒绝空 Prefill。

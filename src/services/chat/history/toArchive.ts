@@ -253,6 +253,9 @@ export const toSessionFile = (original: Session, exportImage: ExportImage): Sess
       inserted_at: iso(message.createdAt),
       fragments:
         message.role === 'user' ? userFragments(message, exportImage) : assistantFragments(message),
+      ...(message.role === 'assistant' && message.webContext
+        ? { custom_provider_web_context: message.webContext }
+        : {}),
     }
   })
   const current = getVisibleMessages(session).at(-1)

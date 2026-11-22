@@ -135,6 +135,11 @@ export type FileBlockParam = {
   source: { type: 'file'; file_id: string }
 }
 
+export type InlineImageBlockParam = {
+  type: 'image'
+  source: { type: 'base64'; media_type: string; data: string }
+}
+
 /** 接口接受的调用块；历史只回传 kind 为 read_link 的调用 */
 export type ServerToolUseBlockParam = Pick<
   ServerToolUseBlock,
@@ -158,7 +163,7 @@ export type AssistantBlockParam =
 export type MessageParam =
   /** Chat Engine 扩展角色，位于对应 user 前；需服务端支持 latest_reminder。 */
   | { role: 'latest_reminder'; content: string }
-  | { role: 'user'; content: string | (FileBlockParam | TextBlockParam)[] }
+  | { role: 'user'; content: string | (FileBlockParam | InlineImageBlockParam | TextBlockParam)[] }
   | { role: 'assistant'; content: AssistantBlockParam[] }
 
 /** 开启联网搜索与边想边搜 */
@@ -177,7 +182,8 @@ export type CreateMessageRequest = {
   model: ChatModel
   system: string
   messages: MessageParam[]
-  thinking: { type: 'enabled' | 'disabled' }
+  thinking?: { type: 'enabled' | 'disabled' }
+  output_config?: { effort?: string }
   tools: (DeepseekWebSearchTool | DeepseekReadUrlTool)[]
   safety_check: { level: 'high' }
   title?: { enabled: boolean }

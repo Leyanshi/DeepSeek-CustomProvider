@@ -33,6 +33,9 @@ Requires Android 8.0 or later. A recent system WebView is recommended. v0.1.10 c
 1. Install the APK from Releases.
 2. Open **Settings → Data**, enter an API Key and an HTTPS Base URL, then confirm to save.
 3. Under **Chat model**, fetch the model list and select a model, or enter a custom model ID. Confirm to save.
+4. In **Web & speech**, configure independent Search/Fetch and speech services, or follow the chat connection. OpenAI compatible speech supports custom TTS/transcription models and voice IDs.
+
+v0.1.11 sends images directly in Messages requests, calls DeepSeek Search/Fetch and includes retrieved sources in the model context, and fixes PCM/WAV/MP3 playback and configurable speech input. Unsupported thinking parameters are omitted after explicit model metadata or API rejection. Capabilities are isolated by URL/model; changing the API Key clears old observations and rejects late cache writes from the previous connection. A manual recheck is available under Data.
 
 New messages and regenerated replies use the selected model. Continuation uses the original reply's model. Connection settings and model selection persist across restarts. Released updates keep the same signing certificate, so you can install them over an earlier release to retain local data.
 
@@ -110,11 +113,11 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | `pnpm test:android`         | Test mobile UI and the simulated bridge      |
 | `pnpm format`               | Format with oxfmt                            |
 
-CI checks types, lint, model parsing, frontend/native URL handling, Android asset packaging, release update logic and the web build. The 12 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge; they do not need an emulator or a real API Key. Five packaging tests cover ZIP paths and missing or stale files; 22 JDK checks cover release comparisons, silent failures and long Unicode notes. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing, including the update dialog, native startup timer, clipboard and TXT export, has not yet been performed.
+CI checks types, lint, model parsing, frontend/native URL handling, Android asset packaging, release update logic and the web build. The 24 mobile UI tests use an existing Microsoft Edge installation and a simulated native bridge, including fake microphone input. They cover image history, Search/Fetch, configurable speech, PCM/WAV playback, and thinking detection across model/key changes, alongside startup and chat regressions. Five packaging tests cover ZIP paths and missing or stale files; 22 JDK checks cover release comparisons, silent failures and long Unicode notes. APK packaging verifies every bundled web file, signatures, alignment and the manifest. Android device testing, including actual microphone/speaker behavior and the update dialog, has not yet been performed.
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 
-Chat uses `deepseek-flash` by default through **Anthropic-compatible Messages / Files APIs**. The selected service must support that protocol and the selected model. Changing Base URL or model does not convert requests to OpenAI Chat Completions. Speech features use ASR / TTS endpoints. Requests include extensions for search, link reading, titles, and `latest_reminder`, so the configured service must support the corresponding capabilities. Supported attachment formats are determined by server-side validation.
+Chat uses `deepseek-flash` by default through **Anthropic-compatible Messages**. The selected service must support that protocol and model; changing Base URL or model does not convert chat to OpenAI Chat Completions. Images use inline Base64 and assume multimodal support; documents require Files API. Search/Fetch can use an independent DeepSeek compatible service; speech supports DeepSeek and OpenAI compatible APIs, including independent models and voices. Chat retains title, safety and `latest_reminder` extensions. Actual model and attachment support is determined by the provider.
 
 ```text
 src/

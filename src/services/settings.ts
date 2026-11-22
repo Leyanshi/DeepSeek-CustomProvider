@@ -1,8 +1,18 @@
 import { create } from 'zustand'
-import type { TtsVoice } from './api/speech.js'
 import { normalizeLocation, type UserLocation } from './location.js'
 import { DEFAULT_BASE_URL, normalizeBaseUrl } from './api/baseUrl.js'
 import { DEFAULT_MODEL, normalizeModelId } from './api/models.js'
+import {
+  EMPTY_SERVICE,
+  normalizeServiceConnection,
+  type ServiceConnection,
+} from './api/serviceConnection.js'
+import {
+  defaultSpeechConfig,
+  normalizeSpeechConfig,
+  type SpeechConfig,
+} from './api/speechConfig.js'
+import { resetModelCapabilities } from './api/modelCapabilities.js'
 
 export type Locale = 'zh-CN' | 'en-US'
 
@@ -17,9 +27,11 @@ type Settings = {
   locale: Locale
   themePreference: ThemePreference
   location: UserLocation | null
-  ttsVoice: TtsVoice
+  speech: SpeechConfig
   thinking: boolean
   search: boolean
+  webService: ServiceConnection
+  webFetch: boolean
   siderCollapsed: boolean
 }
 
@@ -31,8 +43,11 @@ const KEYS = {
   location: 'chat-demo:location',
   themePreference: 'chat-demo:theme-preference',
   ttsVoice: 'chat-demo:tts-voice',
+  speech: 'chat-demo:speech',
   thinking: 'chat-demo:thinking',
   search: 'chat-demo:search',
+  webService: 'chat-demo:web-service',
+  webFetch: 'chat-demo:web-fetch',
   siderCollapsed: 'chat-demo:sider-collapsed',
 } as const
 
@@ -90,8 +105,13 @@ const initialThemePreference = (): ThemePreference => {
   return saved === 'light' || saved === 'dark' ? saved : 'system'
 }
 
-/** 未保存过时使用服务端默认音色 stella（海星） */
-const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
+const initialSpeech = (): SpeechConfig => {
+  try {
+    return normalizeSpeechConfig(JSON.parse(read(KEYS.speech) ?? 'null'))
+  } catch {
+    return defaultSpeechConfig(read(KEYS.ttsVoice) ?? 'stella')
+  }
+}
 
 const initialBaseUrl = () => {
   try {
@@ -112,6 +132,18 @@ const initialModel = () => {
   }
 }
 
+const initialService = (key: string): ServiceConnection => {
+  try {
+    const value = JSON.parse(read(key) ?? 'null')
+    if (value && typeof value.baseUrl === 'string' && typeof value.apiKey === 'string') {
+      return normalizeServiceConnection(value)
+    }
+  } catch {
+    /* Invalid saved settings fall back to the chat connection. */
+  }
+  return { ...EMPTY_SERVICE }
+}
+
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
   baseUrl: initialBaseUrl(),
@@ -119,9 +151,11 @@ export const useSettings = create<Settings>(() => ({
   locale: initialLocale(),
   location: initialLocation(),
   themePreference: initialThemePreference(),
-  ttsVoice: initialTtsVoice(),
+  speech: initialSpeech(),
   thinking: read(KEYS.thinking) === 'true',
   search: read(KEYS.search) === 'true',
+  webService: initialService(KEYS.webService),
+  webFetch: read(KEYS.webFetch) !== 'false',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
 }))
 
@@ -141,9 +175,10 @@ export const setThemePreference = (themePreference: ThemePreference) => {
   useSettings.setState({ themePreference })
 }
 
-export const setTtsVoice = (ttsVoice: TtsVoice) => {
-  write(KEYS.ttsVoice, ttsVoice)
-  useSettings.setState({ ttsVoice })
+export const setSpeechSettings = (config: SpeechConfig) => {
+  const speech = normalizeSpeechConfig(config)
+  write(KEYS.speech, JSON.stringify(speech))
+  useSettings.setState({ speech })
 }
 
 export const setApiConnection = (
@@ -153,6 +188,9 @@ export const setApiConnection = (
 ) => {
   const normalized = normalizeBaseUrl(baseUrl)
   const normalizedModel = normalizeModelId(model)
+  if (apiKey !== useSettings.getState().apiKey) {
+    resetModelCapabilities()
+  }
   write(KEYS.apiKey, apiKey)
   write(KEYS.baseUrl, normalized)
   write(KEYS.model, normalizedModel)
@@ -167,6 +205,13 @@ export const setThinking = (thinking: boolean) => {
 export const setSearch = (search: boolean) => {
   write(KEYS.search, String(search))
   useSettings.setState({ search })
+}
+
+export const setWebSettings = (service: ServiceConnection, webFetch: boolean) => {
+  const webService = normalizeServiceConnection(service)
+  write(KEYS.webService, JSON.stringify(webService))
+  write(KEYS.webFetch, String(webFetch))
+  useSettings.setState({ webService, webFetch })
 }
 
 export const setSiderCollapsed = (siderCollapsed: boolean) => {

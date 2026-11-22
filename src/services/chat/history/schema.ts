@@ -217,6 +217,11 @@ const message: Read<ChatMessage> = (value) => {
     accumulated_token_usage: count(item.accumulated_token_usage),
     inserted_at: time(item.inserted_at),
     fragments: list(fragment)(item.fragments).filter((item): item is Fragment => item !== null),
+    ...(item.custom_provider_web_context === undefined
+      ? {}
+      : {
+          custom_provider_web_context: string(item.custom_provider_web_context),
+        }),
   }
 }
 

@@ -46,6 +46,18 @@ test('uses service prefixes for all endpoints without duplicating /v1', () => {
     ],
     ['https://example.com/v1', '/v1/tools/asr', 'https://example.com/v1/tools/asr'],
     ['https://example.com/anthropic/v1', '/v1/tools/tts', 'https://example.com/v1/tools/tts'],
+    [
+      'https://example.com/proxy/v1',
+      '/v1/tools/search',
+      'https://example.com/proxy/v1/tools/search',
+    ],
+    ['https://example.com', '/v1/tools/fetch', 'https://example.com/v1/tools/fetch'],
+    ['https://example.com/anthropic/v1', '/v1/audio/speech', 'https://example.com/v1/audio/speech'],
+    [
+      'https://example.com/v1',
+      '/v1/audio/transcriptions',
+      'https://example.com/v1/audio/transcriptions',
+    ],
   ]
   for (const [base, endpoint, expected] of examples) {
     assert.equal(resolveApiUrl(base, endpoint), expected)

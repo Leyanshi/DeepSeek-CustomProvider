@@ -1,7 +1,10 @@
 import { useTranslate } from '../../i18n/index.js'
 import { DEFAULT_MODEL } from '../../services/api/models.js'
+import { resetModelCapabilities } from '../../services/api/modelCapabilities.js'
+import { useSettings } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
 import { Select } from '../base/Select.js'
+import { showToast } from '../base/toastState.js'
 import type { ApiKeyEditor } from './ApiKeyField.js'
 import styles from './Settings.module.css'
 
@@ -57,6 +60,17 @@ export const ModelField = ({ editor: { form } }: { editor: ApiKeyEditor }) => {
           />
         </div>
         <div className={styles.description}>{t('modelDescription')}</div>
+        <button
+          className={styles.confirm}
+          type="button"
+          onClick={() => {
+            const settings = useSettings.getState()
+            resetModelCapabilities(settings.baseUrl, settings.model)
+            showToast({ key: 'modelCapabilitiesReset' })
+          }}
+        >
+          {t('modelRecheckThinking')}
+        </button>
         {form.modelsLoaded ? (
           <div className={styles.description} role="status">
             {form.models.length

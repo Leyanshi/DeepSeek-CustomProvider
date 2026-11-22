@@ -32,6 +32,9 @@
 1. 从 Releases 下载 APK，传到手机安装。
 2. 打开「设置 → 数据管理」，填写 API Key 和 HTTPS Base URL，点击「确定」保存。
 3. 在「聊天模型」中获取模型列表并选择，或手动填写自定义模型 ID，再点击「确定」。
+4. 在「联网与语音」中设置 Search/Fetch 和语音服务，可跟随聊天连接或使用独立服务；OpenAI 兼容语音可自定义 TTS 模型、识别模型和音色 ID。
+
+v0.1.11 支持图片直接放进聊天请求，实际调用 DeepSeek Search/Fetch 并将资料交给模型，修复 PCM/WAV/MP3 朗读和可配置的语音输入。模型声明或接口明确拒绝思考设置时，会自动省略不支持的参数。判断按地址与模型隔离，更换 Key 会清除旧判断并阻止旧请求迟到后重新写入；「数据管理」也提供手动重新检测入口。
 
 新消息、编辑提问和重新生成使用当前所选模型，继续生成沿用原回答的模型。连接配置和模型会保留到下次启动。正式发布版本使用同一签名，可以覆盖安装旧版并保留本机数据。
 
@@ -109,11 +112,11 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm test:android`         | 手机尺寸界面与桥接测试       |
 | `pnpm format`               | oxfmt 格式化                 |
 
-CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试、Android 资源打包、更新逻辑测试及网页构建。12 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸和 Android 桥接，不安装模拟器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径和缺失或过期资源；22 项 JDK 检查覆盖更新版本比较、静默失败和长中文日志。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试，包括更新弹窗、原生启动计时、剪贴板和 TXT 导出。
+CI 执行类型检查、代码检查、模型解析、前端与原生 URL 测试、Android 资源打包、更新逻辑测试及网页构建。24 项移动端界面测试使用已有的 Microsoft Edge 模拟手机尺寸、Android 桥接和麦克风输入，覆盖图片历史、Search/Fetch、语音配置与 PCM/WAV 播放、换模型/Key 后思考重新检测等场景，不安装模拟器或测试浏览器，也不需要真实 API Key。5 项打包测试检查 ZIP 路径和缺失或过期资源；22 项 JDK 检查覆盖更新版本比较、静默失败和长中文日志。打包时自动检查全部网页资源、APK 签名、对齐和清单。尚未进行 Android 真机测试，包括真实麦克风/扬声器与更新弹窗。
 
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 
-聊天默认使用 `deepseek-flash`，通过 **Anthropic 兼容的 Messages / Files API** 通信，接入服务需支持相应协议及所选模型。更换 Base URL 和模型不会自动转换为 OpenAI Chat Completions 协议；语音使用 ASR / TTS 接口。请求使用搜索、链接阅读、标题和 `latest_reminder` 等扩展，接入服务需支持相应能力。附件实际支持的格式以服务端校验为准。
+聊天默认使用 `deepseek-flash`，通过 **Anthropic 兼容的 Messages API** 通信，接入服务需支持该协议及所选模型。更换地址或模型不会把聊天转换为 OpenAI Chat Completions。图片使用内联 Base64，默认按多模态模型发送；文档仍需 Files API。Search/Fetch 可使用独立的 DeepSeek 兼容服务；语音支持 DeepSeek/OpenAI 兼容格式和独立模型、音色配置。聊天保留标题、安全审核及 `latest_reminder` 扩展，模型和附件实际支持范围以服务端为准。
 
 <img src="docs/images/android-sidebar.png" width="260" alt="侧边栏 SVG 标识与 Android 界面预览" />
 

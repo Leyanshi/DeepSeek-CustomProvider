@@ -23,7 +23,6 @@ import {
   setLocale,
   setLocation,
   setThemePreference,
-  setTtsVoice,
   useSettings,
   type ThemePreference,
 } from '../../services/settings.js'
@@ -34,6 +33,8 @@ import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
 import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { ModelField } from './ModelField.js'
+import { WebServiceSetting } from './WebServiceSetting.js'
+import { SpeechSetting } from './SpeechSetting.js'
 import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
 import styles from './Settings.module.css'
 
@@ -53,6 +54,7 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
     icon: <IconSettingsOutline16 />,
   },
   { value: 'data', label: 'settingDialogAsideDataOptionLabel', icon: <IconDataOutline16 /> },
+  { value: 'services', label: 'settingsServices', icon: <IconSettingsOutline16 /> },
 ]
 
 const SettingsContent = () => {
@@ -98,8 +100,12 @@ const SettingsContent = () => {
             <>
               <ThemeSetting />
               <LocaleSetting />
-              <TtsVoiceSetting />
               <LocationSetting />
+            </>
+          ) : section === 'services' ? (
+            <>
+              <WebServiceSetting />
+              <SpeechSetting />
             </>
           ) : (
             <>
@@ -286,29 +292,6 @@ const LocaleSetting = () => {
             { value: 'en-US', label: t('settingsLocaleEnUS'), lang: 'en' },
           ]}
           onChange={setLocale}
-        />
-      }
-    />
-  )
-}
-
-/** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */
-const TtsVoiceSetting = () => {
-  const t = useTranslate()
-  const ttsVoice = useSettings((state) => state.ttsVoice)
-  return (
-    <SettingCell
-      label={t('settingsTtsVoice')}
-      status={null}
-      action={
-        <Select
-          ariaLabel={t('settingsTtsVoice')}
-          value={ttsVoice}
-          options={[
-            { value: 'stella', label: t('settingsTtsVoiceStella') },
-            { value: 'tide', label: t('settingsTtsVoiceTide') },
-          ]}
-          onChange={setTtsVoice}
         />
       }
     />

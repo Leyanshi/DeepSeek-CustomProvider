@@ -219,6 +219,7 @@ const toAssistant = (message: ChatMessage): AssistantMessage => {
     model: null,
     thinking: message.thinking_enabled,
     search: message.search_enabled,
+    webContext: message.custom_provider_web_context,
     prefix: false,
     status: replyStatus[message.status],
     // 拒绝回复丢弃模型正文和思考，保留模板提示与工具步骤。

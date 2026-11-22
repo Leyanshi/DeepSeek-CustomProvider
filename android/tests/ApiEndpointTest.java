@@ -11,10 +11,16 @@ public final class ApiEndpointTest {
         check("https://example.com/anthropic/v1", "/anthropic/v1/messages", "POST", "https://example.com/anthropic/v1/messages");
         check("https://example.com/v1", "/v1/tools/asr", "POST", "https://example.com/v1/tools/asr");
         check("https://example.com/anthropic/v1", "/v1/tools/tts", "POST", "https://example.com/v1/tools/tts");
+        check("https://web.example/proxy/v1/", "/v1/tools/search", "POST", "https://web.example/proxy/v1/tools/search");
+        check("https://web.example", "/v1/tools/fetch", "POST", "https://web.example/v1/tools/fetch");
+        check("https://speech.example/anthropic/v1", "/v1/audio/speech", "POST", "https://speech.example/v1/audio/speech");
+        check("https://speech.example/v1", "/v1/audio/transcriptions", "POST", "https://speech.example/v1/audio/transcriptions");
         for (String value : new String[] { "http://example.com", "https://user@example.com", "https://example.com?key=secret", "https://example.com#fragment", "https://example.com/a%2fb", "https://example.com/a%5cb", "https://example.com/%00", "https://example.com:0" }) {
             reject(value, "/models", "GET");
         }
         reject("https://example.com", "/models", "POST");
+        reject("https://example.com", "/v1/tools/search", "GET");
+        reject("https://example.com", "/v1/audio/speech", "DELETE");
         reject("https://example.com", "//other.com/models", "GET");
         reject("https://example.com", "/anthropic/v1/files/../models", "DELETE");
         System.out.println("Native Base URL validation and endpoint routing passed");

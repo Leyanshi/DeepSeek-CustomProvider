@@ -1,15 +1,11 @@
 import { create } from 'zustand'
 import { createId } from '../../utils/id.js'
 import { ApiError, streamMessage } from '../api/client.js'
-import type { CreateMessageRequest } from '../api/types.js'
+import type { InlineImageBlockParam } from '../api/types.js'
+import { inlineImage } from '../api/images.js'
+import { prepareWebContext } from '../api/web.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
-import {
-  cancelUpload,
-  checkImageFileIds,
-  describeUploadError,
-  uploadAttachment,
-  useUploads,
-} from '../attachments.js'
+import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
@@ -48,17 +44,6 @@ const SAFETY_CHECK = { level: 'high' } as const
 const FILE_RETRY_LIMIT = 2
 /** 退避基数，第 n 次重试等待 2^n 倍；连续失败达到上限就放弃，把原始报错展示出来 */
 const FILE_RETRY_BASE_DELAY = 1000
-
-/** 阅读链接始终开启，智能搜索开关控制是否另行声明搜索工具（含边想边搜）。 */
-const serverTools = (search: boolean): CreateMessageRequest['tools'] => {
-  const tools: CreateMessageRequest['tools'] = [
-    { type: 'deepseek_read_url', name: 'deepseek_read_url' },
-  ]
-  if (search) {
-    tools.push({ type: 'deepseek_web_search', name: 'deepseek_web_search' })
-  }
-  return tools
-}
 
 /** 允许自动补标题的请求；手动重命名后取消本轮标题写入，包含主动清空标题的情况。 */
 const titleRequests = new Set<AbortController>()
@@ -595,8 +580,6 @@ export const sendMessage = (targetSessionId: string | null) => {
     files: files.map(({ id, serverId, name, size, isImage, mimeType }) => ({
       id,
       serverId,
-      // 草稿附件已上传成功，每张图片都在上传前检查过长边，超限的已缩小。
-      imageSizeChecked: isImage,
       name,
       size,
       isImage,
@@ -789,6 +772,9 @@ const saveServerIds = (sessionId: string, serverIds: ReadonlyMap<string, string 
  * 本地也没有原件（导入的文档附件只有元数据）时返回 null，该附件只展示、不进入请求。
  */
 const ensureServerId = async (apiKey: string, file: FileAttachment): Promise<string | null> => {
+  if (file.isImage) {
+    return null
+  }
   if (file.serverId) {
     return file.serverId
   }
@@ -836,16 +822,6 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   const aborted = new Promise<never>((_, reject) => {
     signal.addEventListener('abort', () => reject(signal.reason), { once: true })
   })
-  // 旧图片超限时先清除 ID，交给下方已有的附件补传流程。
-  const files = [
-    ...request.question.files,
-    ...getContextRounds(request.history).flatMap(([user]) => user.files),
-  ]
-  const checked = await Promise.race([checkImageFileIds(files, signal), aborted])
-  if (checked.size > 0) {
-    saveServerIds(sessionId, checked)
-    request = refreshRequest(sessionId, request)
-  }
   const uploads = Promise.allSettled(
     request.question.files.map(async (file) => {
       const serverId = await ensureServerId(apiKey, file)
@@ -868,7 +844,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   const pending = new Map<string, FileAttachment>()
   for (const [user] of getContextRounds(request.history).toReversed()) {
     for (const file of user.files) {
-      if (!file.serverId && !serverIds.has(file.id) && !pending.has(file.id)) {
+      if (!file.isImage && !file.serverId && !serverIds.has(file.id) && !pending.has(file.id)) {
         pending.set(file.id, file)
       }
     }
@@ -890,10 +866,29 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   const session = getSession(sessionId)
   const resolve = <T extends Message>(message: T): T =>
     (session?.messages.find((m) => m.id === message.id) as T | undefined) ?? message
+  const images = new Map<string, InlineImageBlockParam>()
+  for (const file of [
+    ...request.question.files,
+    ...getContextRounds(request.history).flatMap(([user]) => user.files),
+  ]) {
+    if (!file.isImage || images.has(file.id)) {
+      continue
+    }
+    signal.throwIfAborted()
+    const blob =
+      pendingFiles.get(sessionId)?.find((item) => item.id === file.id)?.blob ??
+      (await db.loadFile(file.id))
+    if (blob) {
+      images.set(file.id, await inlineImage(blob, file.name, file.mimeType, signal))
+    } else if (request.question.files.some((item) => item.id === file.id)) {
+      throw new Error('Local image is unavailable')
+    }
+  }
   return {
     history: request.history.map(resolve),
     question: resolve(request.question),
     prefix: request.prefix,
+    images,
   }
 }
 
@@ -902,7 +897,7 @@ const collectServerFileIds = (request: Request): Set<string> => {
   const ids = new Set<string>()
   const add = (files: FileAttachment[]) => {
     for (const file of files) {
-      if (file.serverId) {
+      if (!file.isImage && file.serverId) {
         ids.add(file.serverId)
       }
     }
@@ -988,6 +983,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
   }
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
   let reply = initial
+  let webContext: Awaited<ReturnType<typeof prepareWebContext>> | undefined
   let frame = 0
   const flush = () => {
     cancelAnimationFrame(frame)
@@ -1004,19 +1000,38 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       try {
         const prepared = await prepareFiles(sessionId, request, controller.signal)
         preparing = false
+        if (!webContext && !prepared.prefix) {
+          webContext = await prepareWebContext(
+            prepared.question.content,
+            initial.search ?? false,
+            controller.signal,
+            (blocks) => {
+              reply = { ...reply, blocks: [...initial.blocks, ...blocks] }
+              flush()
+            }
+          )
+        }
         // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
         const latestReminder = prepared.prefix
           ? prepared.prefix.latestReminder
           : createLatestReminder(useSettings.getState())
-        reply = { ...reply, latestReminder }
+        reply = {
+          ...reply,
+          latestReminder,
+          webContext: webContext?.context || prepared.prefix?.webContext,
+        }
         updateReply(sessionId, reply)
         persist(sessionId)
         const messages = toRequestMessages(
           prepared.history,
-          prepared.question,
+          {
+            ...prepared.question,
+            content: prepared.question.content + (webContext?.context ?? ''),
+          },
           prepared.prefix,
           initial.thinking ?? false,
-          latestReminder
+          latestReminder,
+          prepared.images
         )
         const events = streamMessage(
           useSettings.getState().apiKey ?? '',
@@ -1026,7 +1041,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             messages,
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,
-            tools: serverTools(initial.search ?? false),
+            tools: [],
             ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
           },
           controller.signal

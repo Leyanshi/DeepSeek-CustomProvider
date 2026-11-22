@@ -11,6 +11,9 @@ export default defineConfig({
   reporter: 'list',
   use: {
     channel: 'msedge',
+    launchOptions: {
+      args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+    },
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,

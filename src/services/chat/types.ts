@@ -85,6 +85,8 @@ export type AssistantMessage = MessageBranch & {
   search?: boolean
   /** 本轮请求的系统信息快照；各回答版本独立保存，续写沿用。历史消息中缺省的快照保持为空。 */
   latestReminder?: string
+  /** Plain sources from our Search/Fetch calls, retained across history exports. */
+  webContext?: string
   /** 是否允许作为续写前缀；仍需满足回复状态与内容限制。 */
   prefix: boolean
   status: ReplyStatus
